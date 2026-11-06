@@ -14,7 +14,7 @@
   <div class="app-shell" id="workspace">
     <main class="app-content">
       <div class="ui-stack">
-        <header class="ui-page-header">
+        <header class="ui-page-header ui-page-header-panel">
           <div class="ui-page-heading">
             <nav class="nav nav-underline header-nav" id="header-nav" aria-label="画面の切り替え">
               <a class="nav-link" href="#/overview" data-nav="overview" aria-current="page">概要 <span class="nav-meta" data-nav-count="working" title="AIが作業中">0</span></a>
@@ -155,22 +155,22 @@
           </div>
           <div class="ui-board-wrap" tabindex="0" role="region" aria-label="タスクのボード">
             <div class="ui-board" data-ui-board id="board" aria-label="タスク" aria-busy="true">
-              <section class="column" data-ui-column="todo">
+              <section class="column ui-surface" data-ui-column="todo">
                 <h2 class="ui-section-title"><span class="dot dot-todo" aria-hidden="true"></span><span class="name">未着手</span> <span class="count" data-ui-count>0</span></h2>
                 <div data-ui-cards tabindex="0" role="region" aria-label="未着手のカード"></div>
                 <p class="none" data-ui-empty>タスクはありません</p>
               </section>
-              <section class="column" data-ui-column="in_progress">
+              <section class="column ui-surface" data-ui-column="in_progress">
                 <h2 class="ui-section-title"><span class="dot dot-in_progress" aria-hidden="true"></span><span class="name">進行中</span> <span class="count" data-ui-count>0</span></h2>
                 <div data-ui-cards tabindex="0" role="region" aria-label="進行中のカード"></div>
                 <p class="none" data-ui-empty>タスクはありません</p>
               </section>
-              <section class="column" data-ui-column="review">
+              <section class="column ui-surface" data-ui-column="review">
                 <h2 class="ui-section-title"><span class="dot dot-review" aria-hidden="true"></span><span class="name">確認中</span> <span class="count" data-ui-count>0</span></h2>
                 <div data-ui-cards tabindex="0" role="region" aria-label="確認中のカード"></div>
                 <p class="none" data-ui-empty>タスクはありません</p>
               </section>
-              <section class="column" data-ui-column="done">
+              <section class="column ui-surface" data-ui-column="done">
                 <h2 class="ui-section-title"><span class="dot dot-done" aria-hidden="true"></span><span class="name">完了</span> <span class="count" id="board-done-count">0</span></h2>
                 <div data-ui-cards tabindex="0" role="region" aria-label="完了のカード"></div>
                 <div class="board-done-hidden type-caption" id="board-done-hidden" hidden><span></span> <button class="btn btn-sm btn-outline-secondary" type="button" id="board-show-all-done">すべて表示</button></div>
@@ -236,14 +236,20 @@
             </div>
           </section>
           <section class="fx-col-12 ui-card" aria-labelledby="color-mode-title">
-            <div class="ui-card-header"><h2 class="ui-card-title" id="color-mode-title">表示モード</h2></div>
+            <div class="ui-card-header"><h2 class="ui-card-title" id="color-mode-title">表示</h2></div>
             <div class="ui-card-body ui-stack">
               <div class="ui-color-switcher" role="group" aria-label="表示モード">
                 <button type="button" class="btn btn-sm btn-ghost-secondary" data-ui-color-mode="light" icon="mdi-weather-sunny">ライト</button>
                 <button type="button" class="btn btn-sm btn-ghost-secondary" data-ui-color-mode="dark" icon="mdi-weather-night">ダーク</button>
                 <button type="button" class="btn btn-sm btn-ghost-secondary" data-ui-color-mode="system" icon="mdi-monitor">システム</button>
               </div>
-              <p class="type-caption type-color-muted sp-m-0">「システム」は OS の明暗の設定に合わせます。画面右上の月と太陽のボタンでも、ライトとダークを切り替えられます。選んだモードはこのブラウザに保存されます。</p>
+              <p class="type-caption type-color-muted sp-m-0">「システム」は OS の明暗の設定に合わせます。画面右上の月と太陽のボタンでも、ライトとダークを切り替えられます。</p>
+              <div class="field">
+                <label for="surface-opacity">カードの濃さ：<output id="surface-opacity-value" for="surface-opacity">52%</output></label>
+                <input class="form-range" id="surface-opacity" type="range" min="0" max="100" step="1" value="52">
+                <small>カードや見出しの地の色の濃さです。初期値は 52% です。下げるほど背景画像がよく見え、上げるほど文字が読みやすくなります。0% にすると地の色がなくなり、背景画像の上に文字が直接載ります。</small>
+              </div>
+              <p class="type-caption type-color-muted sp-m-0">表示モードとカードの濃さは、このブラウザに保存されます。</p>
             </div>
           </section>
           <section class="fx-col-7 tablet:fx-col-12 mobile:fx-col-12 ui-card" aria-labelledby="background-title">

@@ -21,20 +21,12 @@ body.ui-app > .app-shell {
   overflow: visible;
 }
 
-/* Every page heading is one glass panel, the same on every page. On tablets and up it stays at
-   the top while the page scrolls. Board and activity also pin their filter bar right under it,
-   and the two read as one panel: the heading is its top half (no bottom border, square bottom
-   corners) and the bar its bottom half, with no gap for cards to show through. Phones keep the
-   bar in the flow, where the wrapped bar would cover most of the screen. */
-.app-content .ui-page-header {
-  padding: var(--space-4);
-  border: 1px solid var(--ui-glass-highlight, var(--bs-border-color));
-  border-radius: var(--bs-border-radius);
-  background-color: var(--ui-theme-surface, var(--bs-body-bg));
-  background-image: linear-gradient(135deg, var(--ui-glass-sheen, transparent), transparent 60%);
-  -webkit-backdrop-filter: var(--ui-theme-blur, none);
-  backdrop-filter: var(--ui-theme-blur, none);
-}
+/* Every page heading is the same Kav-UI panel (.ui-page-header-panel). On tablets and up it
+   stays at the top while the page scrolls. Board and activity also pin their filter bar right
+   under it, and the two read as one panel: the heading is its top half (no bottom border, square
+   bottom corners, no shadow on the bar) and the bar its bottom half, with no gap for cards to
+   show through. Phones keep the bar in the flow, where the wrapped bar would cover most of the
+   screen. */
 @media (width >= 768px) {
   .app-content .ui-page-header {
     position: sticky;
@@ -46,7 +38,9 @@ body.ui-app > .app-shell {
     margin-block-end: calc(-1 * var(--space-4));
     padding-block-end: var(--space-3);
     border-block-end: 0;
-    border-radius: var(--bs-border-radius) var(--bs-border-radius) 0 0;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+    box-shadow: inset 0 1px 0 var(--ui-glass-highlight, transparent);
   }
   .app-content:is([data-current-view="board"], [data-current-view="activity"]) [data-view] > .ui-toolbar {
     position: sticky;
@@ -54,19 +48,16 @@ body.ui-app > .app-shell {
     z-index: 19;
     border-start-start-radius: 0;
     border-start-end-radius: 0;
-    -webkit-backdrop-filter: var(--ui-theme-blur, none);
-    backdrop-filter: var(--ui-theme-blur, none);
   }
 }
 
-/* Filter bars: Kav-UI's select wrapper is full width, which pushes it below its label.
-   Size it to its content so every label sits beside its control; the minimum fits the
-   longest option, so picking one does not shift the rest of the bar. */
-.ui-toolbar-group > .ui-select {
-  width: auto;
-  min-width: 10rem;
-  max-width: min(100%, 24rem);
-}
+/* Filter bars: Kav-UI sizes each select to its longest option and keeps a label and its control
+   on one line. The board's repository options can be long, so cap that width and let a group
+   shrink to a phone screen, cutting the shown option instead of scrolling the page sideways.
+   Remove once Kai17-a/Custom-UI#126 ships. */
+.ui-toolbar-group { max-width: 100%; min-width: 0; }
+.ui-toolbar-group > .ui-select { flex: 0 1 auto; min-width: 0; max-width: 20rem; }
+.ui-toolbar-group .ui-select-native { min-width: 0; max-width: 100%; }
 
 /* Table toolbars: the row count and the page buttons sit together at the top right, on the
    search box's line rather than centred against its label and box. */
@@ -96,23 +87,35 @@ body.ui-app > .app-shell {
     opacity var(--motion-duration-base) var(--motion-ease-out);
 }
 
+/* Kav-UI keeps the surface opacity at or above the theme default (52%). Let the card opacity
+   setting go down to 0%; the theme still derives the input and dialog colors from it, and its
+   fallbacks for forced colors and missing backdrop-filter stay in force. Uses a private Kav-UI
+   variable, so check it on every Kav-UI update. Remove once Kai17-a/Custom-UI#128 ships.
+   One lighter blur for every panel, so the background image reads the same on every page. */
+body[data-ui-theme="glassmorphism"][data-ui-theme] {
+  --_ui-surface-opacity: clamp(0%, var(--ui-theme-surface-opacity, 52%), 100%);
+  --ui-theme-blur: blur(8px) saturate(140%);
+}
+
+/* Kav-UI paints task cards opaque in every theme. On the glass themes, give them the same
+   opacity as every other panel, so one setting looks the same on the board and the overview.
+   Cards that an AI agent is working on keep Kav-UI's highlight.
+   Remove once Kai17-a/Custom-UI#127 ships. */
+body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .task-card:not(.is-running) {
+  background: color-mix(in srgb, var(--bs-tertiary-bg) var(--ui-theme-surface-opacity, 52%), transparent);
+}
+
 .ui-board .task-card:hover {
   translate: 0 -2px;
   box-shadow: var(--bs-box-shadow-sm);
 }
 
 
-/* Board columns are panels of their own, so headings and empty states stay readable over a
-   background image, like the cards and the filter bar. */
+/* Board columns are Kav-UI panels (.ui-surface), so headings and empty states stay readable
+   over a background image, like the cards and the filter bar. */
 .ui-board .column {
   min-height: 9rem;
   padding: var(--space-3);
-  border: 1px solid var(--ui-glass-highlight, var(--bs-border-color));
-  border-radius: var(--bs-border-radius);
-  background-color: var(--ui-theme-surface, var(--bs-body-bg));
-  background-image: linear-gradient(135deg, var(--ui-glass-sheen, transparent), transparent 60%);
-  -webkit-backdrop-filter: var(--ui-theme-blur, none);
-  backdrop-filter: var(--ui-theme-blur, none);
   transition: background-color var(--motion-duration-base) var(--motion-ease-out);
 }
 .ui-board .column > .ui-section-title {
@@ -311,11 +314,6 @@ body.ui-app > .app-shell {
 .family-meter-review { background: var(--bs-warning); }
 .family-meter-done { background: var(--bs-success); }
 
-/* Review has no Kav-UI agent state; show it in the warning color used by review badges. */
-.ui-agent-node.is-review { border-color: var(--bs-warning); }
-.ui-agent-node.is-review .ui-agent-state { color: var(--bs-warning-text-emphasis); }
-.ui-agent-node.is-review .ui-agent-state::before { background: currentColor; }
-
 .ui-agent-node.is-current {
   box-shadow: 0 0 0 3px var(--family-color, var(--bs-primary));
 }
@@ -389,8 +387,10 @@ body.ui-app > .app-shell {
   border-radius: var(--bs-border-radius);
   background: var(--bs-body-bg);
   box-shadow: var(--bs-box-shadow-sm);
+  /* Show only the edge below the card, so the layers do not show through a see-through card. */
+  clip-path: inset(calc(100% - 8px) -24px -24px -24px);
 }
-.task-stack-layers::after { inset: 16px 12px 0; z-index: -2; }
+.task-stack-layers::after { inset: 16px 12px 0; z-index: -2; clip-path: inset(calc(100% - 16px) -24px -24px -24px); }
 .ui-board .task-stack-deck > .task-card { margin: 0; width: 100%; }
 .task-stack-toggle { margin-block: var(--space-2); }
 .task-stack.is-expanded .task-stack-layers { display: none; }
@@ -498,15 +498,6 @@ body.ui-app > .app-shell {
   .ui-board .column > .none { flex: none; }
   .ui-board > .task-links { overflow: hidden; max-height: 100%; }
 }
-
-/* Title and description of a task synced from GitHub: shown, but clearly not editable here. */
-.task-details .form-control[readonly] {
-  background-color: var(--bs-tertiary-bg);
-  border-style: dashed;
-  color: var(--bs-secondary-color);
-  cursor: default;
-}
-.task-details .form-control[readonly]:focus { box-shadow: none; }
 
 /* Route links use Kav-UI navigation, with touch targets at every viewport size. */
 .header-nav { width: fit-content; margin-block-end: var(--space-3); }

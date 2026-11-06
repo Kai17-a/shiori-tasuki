@@ -41,6 +41,12 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   })[c]);
 
+  /** Sets a select's value from code and updates Kav-UI's custom trigger to match. */
+  const setSelectValue = (select, value) => {
+    select.value = value;
+    KavUI.sync(select);
+  };
+
   async function api(method, path, body) {
     const response = await fetch(path, {
       method,
@@ -154,7 +160,7 @@
   const expandedStacks = new Set();
   try {
     const saved = localStorage.getItem('task-tool-done-period');
-    if ([...donePeriod.options].some((option) => option.value === saved)) donePeriod.value = saved;
+    if ([...donePeriod.options].some((option) => option.value === saved)) setSelectValue(donePeriod, saved);
   } catch { /* Storage is optional. */ }
 
   function withinDonePeriod(task, now = new Date()) {
@@ -165,7 +171,7 @@
     return Date.parse(task.completed_at ?? task.updated_at) >= since;
   }
   try {
-    subtaskLayout.value = localStorage.getItem('task-tool-subtask-layout') === 'stack' ? 'stack' : 'list';
+    setSelectValue(subtaskLayout, localStorage.getItem('task-tool-subtask-layout') === 'stack' ? 'stack' : 'list');
   } catch { /* Storage is optional. */ }
 
 
@@ -818,12 +824,6 @@
     };
   }
 
-  function syncSelect(select, value) {
-    select.value = value;
-    // Kav-UI's custom select menu follows a change event.
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
   function clearPendingFile() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = null;
@@ -838,8 +838,8 @@
     const bg = savedBackground;
     $('#background-opacity').value = bg.opacity;
     setText('#background-opacity-value', `${bg.opacity}%`);
-    syncSelect($('#background-position'), bg.position);
-    syncSelect($('#background-size'), bg.size);
+    setSelectValue($('#background-position'), bg.position);
+    setSelectValue($('#background-size'), bg.size);
     applyBackground({ imageUrl: bg.image?.url ?? null, opacity: bg.opacity, position: bg.position, size: bg.size });
     setText('#background-info', bg.image
       ? `${bg.image.content_type.replace('image/', '').toUpperCase()} · ${formatBytes(bg.image.bytes)} · 濃さ ${bg.opacity}% · ${POSITION_LABELS[bg.position]} · ${SIZE_LABELS[bg.size]} · 更新: ${relativeTime(bg.image.updated_at)}`
@@ -860,6 +860,36 @@
     const file = backgroundFile.files[0];
     previewUrl = file ? URL.createObjectURL(file) : null;
     applyBackground(formBackground());
+  });
+
+  // Card opacity is a per-browser display preference from 0% to 100%. KavUI.setSurfaceOpacity()
+  // and its saved value stop at the theme default (52%), so the app saves its own value and sets
+  // the variable directly; app.css lifts the theme's lower limit (Kai17-a/Custom-UI#128).
+  const SURFACE_OPACITY_KEY = 'task-tool-surface-opacity';
+  const surfaceOpacity = $('#surface-opacity');
+  const applySurfaceOpacity = (value) => {
+    surfaceOpacity.value = value;
+    document.body.style.setProperty('--ui-theme-surface-opacity', `${surfaceOpacity.value}%`);
+    setText('#surface-opacity-value', `${surfaceOpacity.value}%`);
+  };
+  {
+    let saved = null;
+    try {
+      saved = localStorage.getItem(SURFACE_OPACITY_KEY);
+      // Carry over a value saved through Kav-UI before, and stop Kav-UI restoring it.
+      const kavSaved = localStorage.getItem('kav-ui-surface-opacity');
+      if (saved === null && kavSaved !== null) {
+        saved = kavSaved;
+        localStorage.setItem(SURFACE_OPACITY_KEY, kavSaved);
+      }
+      localStorage.removeItem('kav-ui-surface-opacity');
+    } catch { /* Storage is optional. */ }
+    const number = Number(saved);
+    applySurfaceOpacity(saved !== null && saved.trim() !== '' && Number.isFinite(number) ? number : 52);
+  }
+  surfaceOpacity.addEventListener('input', () => {
+    applySurfaceOpacity(surfaceOpacity.value);
+    try { localStorage.setItem(SURFACE_OPACITY_KEY, surfaceOpacity.value); } catch { /* Storage is optional. */ }
   });
 
   backgroundForm.addEventListener('input', (event) => {
@@ -918,8 +948,8 @@
 
   // ---- Family relationship modal -------------------------------------------
 
-  /** Agent-tree states for each status; review has no Kav-UI state, so it is styled in app.css. */
-  const NODE_STATES = { todo: 'pending', in_progress: 'pending', review: 'pending', done: 'complete' };
+  /** Agent-tree states for each status. */
+  const NODE_STATES = { todo: 'pending', in_progress: 'pending', review: 'review', done: 'complete' };
   /** Kav-UI's running state is kept for tasks an AI agent is doing right now. */
   const nodeState = (task) => (isAgentWorking(task) ? 'running' : NODE_STATES[task.status]);
   const familyDialog = $('#family-dialog');
@@ -944,12 +974,11 @@
   function renderFamilyNode(task, family, currentId) {
     const kids = family.children.get(task.id) ?? [];
     const current = task.id === currentId;
-    const review = task.status === 'review' ? ' is-review' : '';
     const meta = [`#${task.id}`];
     if (task.subtasks.total > 0) meta.push(`子タスク ${task.subtasks.done}/${task.subtasks.total}`);
     if (task.github) meta.push(`${task.github.repo}#${task.github.number}`);
     return `<li>
-      <div class="ui-agent-node${review}${current ? ' is-current' : ''}" data-state="${nodeState(task)}"${current ? ' aria-current="true"' : ''}>
+      <div class="ui-agent-node${current ? ' is-current' : ''}" data-state="${nodeState(task)}"${current ? ' aria-current="true"' : ''}>
         <span class="ui-agent-state">${STATUS_LABELS[task.status]}</span>
         <strong><a href="#task-${task.id}" data-action="open-task">${escapeHtml(task.title)}</a></strong>
         <small>${meta.map(escapeHtml).join(' · ')}</small>
@@ -1154,7 +1183,7 @@
     history.replaceState(null, '', '#/board');
     showView('board');
     searchInput.value = '';
-    sourceSelect.value = 'all';
+    setSelectValue(sourceSelect, 'all');
     showSubtasksInput.checked = true;
     renderBoard();
     const card = board.querySelector(`[data-ui-card="${target.dataset.id}"]`);
