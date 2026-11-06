@@ -1,0 +1,31 @@
+/* --- utilities (only what Kav-UI uses) --- */
+.d-flex { display: flex !important; }
+.d-block { display: block !important; }
+.gap-1 { gap: .25rem !important; } .gap-2 { gap: .5rem !important; } .gap-3 { gap: 1rem !important; }
+.m-0 { margin: 0 !important; } .p-0 { padding: 0 !important; }
+.px-2 { padding-left: .5rem !important; padding-right: .5rem !important; }
+.px-3 { padding-left: 1rem !important; padding-right: 1rem !important; }
+.py-0 { padding-top: 0 !important; padding-bottom: 0 !important; }
+.py-1 { padding-top: .25rem !important; padding-bottom: .25rem !important; }
+.py-2 { padding-top: .5rem !important; padding-bottom: .5rem !important; }
+.ms-auto { margin-left: auto !important; }
+.me-1 { margin-right: .25rem !important; }
+.ms-1 { margin-left: .25rem !important; }
+.w-auto { width: auto !important; }
+.small { font-size: .875em; }
+.border-0 { border: 0 !important; }
+.border-bottom { border-bottom: 1px solid var(--bs-border-color) !important; }
+.rounded-0 { border-radius: 0 !important; }
+.rounded-pill { border-radius: 50rem !important; }
+.shadow-sm { box-shadow: var(--bs-box-shadow-sm) !important; }
+.border { border: 1px solid var(--bs-border-color) !important; }
+
+.fw-normal { font-weight: 400 !important; }
+.justify-content-start { justify-content: flex-start !important; }
+.visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important;
+  margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
+
+
+/* ============================================================
+   animations.css — planning-banner / task-card の実物定義
+   ============================================================ */

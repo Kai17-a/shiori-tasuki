@@ -1,0 +1,21 @@
+/* Uses the existing native dialog API, focus containment and dismissal. */
+.ui-dialog.ui-drawer { --ui-drawer-x:100%; --ui-drawer-y:0; position:fixed; inset:0; inset-inline-start:auto; margin:0; padding:0; width:min(var(--ui-drawer-width,24rem),100vw); min-width:0; max-width:100vw; height:100dvh; max-height:100dvh; border-radius:0; overflow:hidden; }
+.ui-dialog.ui-drawer[open] { display:flex; flex-direction:column; animation:ui-drawer-enter var(--motion-duration-base) var(--motion-ease-out); }
+.ui-dialog.ui-drawer-end { inset-inline-start:auto; inset-inline-end:0; } /* Explicit form of the default side. */
+.ui-dialog.ui-drawer-start { inset-inline-start:0; inset-inline-end:auto; --ui-drawer-x:-100%; }
+.ui-dialog.ui-drawer:dir(rtl) { --ui-drawer-x:-100%; }
+.ui-dialog.ui-drawer-start:dir(rtl) { --ui-drawer-x:100%; }
+.ui-dialog:is(.ui-drawer-top,.ui-drawer-bottom) { inset-inline:0; width:100vw; height:min(var(--ui-drawer-height,20rem),100dvh); --ui-drawer-x:0; }
+.ui-dialog.ui-drawer-top { inset-block-start:0; inset-block-end:auto; --ui-drawer-y:-100%; }
+.ui-dialog.ui-drawer-bottom { inset-block-start:auto; inset-block-end:0; --ui-drawer-y:100%; }
+.ui-drawer-header, .ui-drawer-footer { display:flex; flex:none; flex-wrap:wrap; align-items:center; gap:var(--space-3); padding:var(--space-4); }
+.ui-drawer-header { justify-content:space-between; border-bottom:1px solid var(--bs-border-color); }
+.ui-drawer-header h2 { margin:0; font-size:var(--text-lg); }
+.ui-drawer-body { flex:1; min-height:0; padding:var(--space-4); overflow:auto; overscroll-behavior:contain; }
+.ui-drawer-footer { justify-content:flex-end; border-top:1px solid var(--bs-border-color); }
+.ui-dialog.ui-drawer form { grid-template-columns:minmax(0,1fr); }
+html:has(.ui-drawer[open]) { overflow:hidden; scrollbar-gutter:stable; }
+@keyframes ui-drawer-enter { from { opacity:0; translate:var(--ui-drawer-x) var(--ui-drawer-y); } to { opacity:1; translate:0 0; } }
+@media (prefers-reduced-motion:reduce) { .ui-dialog.ui-drawer[open] { animation:none; } }
+
+.ui-dialog:is(.ui-drawer-top,.ui-drawer-bottom):dir(rtl) { --ui-drawer-x:0; }

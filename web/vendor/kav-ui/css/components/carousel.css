@@ -1,0 +1,17 @@
+/* Native scroll-snap remains usable without JavaScript. No automatic rotation. */
+.ui-carousel { min-width:0; width:100%; overflow:hidden; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius-lg); background:var(--ui-theme-surface,var(--bs-body-bg)); color:var(--bs-body-color); -webkit-backdrop-filter:var(--ui-theme-blur,none); backdrop-filter:var(--ui-theme-blur,none); }
+.ui-carousel-viewport { display:flex; width:100%; min-width:0; overflow-x:auto; scroll-snap-type:x mandatory; scrollbar-width:thin; overscroll-behavior-inline:contain; }
+.ui-carousel[data-ui-carousel-ready] .ui-carousel-viewport { scrollbar-width:none; }
+.ui-carousel[data-ui-carousel-ready] .ui-carousel-viewport::-webkit-scrollbar { display:none; }
+.ui-carousel-viewport:focus-visible { outline:2px solid var(--bs-primary); outline-offset:-2px; }
+.ui-carousel-slide { flex:0 0 100%; min-width:0; scroll-snap-align:start; scroll-snap-stop:always; overflow-wrap:anywhere; }
+.ui-carousel-slide > img { display:block; width:100%; height:auto; }
+.ui-carousel-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--space-3); border-top:1px solid var(--bs-border-color); }
+.ui-carousel:not([data-ui-carousel-ready]) .ui-carousel-controls { display:none; }
+.ui-carousel-indicators { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:2px; }
+.ui-carousel-indicators > button { display:grid; place-items:center; width:28px; height:28px; padding:0; border:0; border-radius:var(--bs-border-radius); background:transparent; color:var(--bs-secondary-color); cursor:pointer; }
+.ui-carousel-indicators > button::before { content:""; width:8px; height:8px; border-radius:50%; background:currentColor; }
+.ui-carousel-indicators > button[aria-pressed="true"] { color:var(--bs-primary); }
+.ui-carousel-indicators > button[aria-pressed="true"]::before { width:16px; border-radius:4px; }
+.ui-carousel-status { color:var(--bs-secondary-color); font-size:.8125rem; font-variant-numeric:tabular-nums; }
+@media (forced-colors:active) { .ui-carousel-indicators > button[aria-pressed="true"] { outline:1px solid Highlight; } }

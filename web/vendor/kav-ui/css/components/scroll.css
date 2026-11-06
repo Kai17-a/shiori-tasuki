@@ -1,0 +1,7 @@
+/* Put this class on <html> for page anchors, or on an overflow container. */
+.ui-scroll-smooth { scroll-behavior:smooth; }
+.ui-scroll-region { max-height:var(--ui-scroll-height,16rem); overflow:auto; scroll-padding:var(--space-3); }
+.ui-scroll-target { scroll-margin-block-start:var(--ui-scroll-offset,0px); }
+@media (prefers-reduced-motion:reduce) {
+  .ui-scroll-smooth { scroll-behavior:auto !important; }
+}

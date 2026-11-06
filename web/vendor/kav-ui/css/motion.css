@@ -1,0 +1,123 @@
+/* Automatic interaction feedback. No animation options are required. */
+.btn { transition:color var(--motion-duration-base) var(--motion-ease-out), background-color var(--motion-duration-base) var(--motion-ease-out), border-color var(--motion-duration-base) var(--motion-ease-out), box-shadow var(--motion-duration-base) var(--motion-ease-out), scale var(--motion-duration-fast) var(--motion-ease-out); }
+.btn:active:not(:disabled):not([aria-disabled="true"]) { scale:.97; }
+.ui-copy-icon, .btn-close { transition:color var(--motion-duration-base) var(--motion-ease-out), background-color var(--motion-duration-base) var(--motion-ease-out), opacity var(--motion-duration-base) var(--motion-ease-out), scale var(--motion-duration-fast) var(--motion-ease-out); }
+.ui-copy-icon:active:not(:disabled):not([aria-disabled="true"]), .btn-close:active { scale:.94; }
+:is(.tabs [role="tab"], .nav-pills .nav-link, .pagination button, .app-sidebar a, .ui-calendar-day, .ui-calendar-nav) { transition:color var(--motion-duration-base) var(--motion-ease-out), background-color var(--motion-duration-base) var(--motion-ease-out), border-color var(--motion-duration-base) var(--motion-ease-out), box-shadow var(--motion-duration-base) var(--motion-ease-out); }
+.alert { transition:color var(--motion-duration-base) var(--motion-ease-out), background-color var(--motion-duration-base) var(--motion-ease-out), border-color var(--motion-duration-base) var(--motion-ease-out); }
+.form-check-input, .switch input { transition:background-color var(--motion-duration-base) var(--motion-ease-out), border-color var(--motion-duration-base) var(--motion-ease-out), box-shadow var(--motion-duration-base) var(--motion-ease-out); }
+.switch input::after { transition:translate var(--motion-duration-base) var(--motion-ease-out), background-color var(--motion-duration-base) var(--motion-ease-out); }
+.ui-loading-label { transition:opacity var(--motion-duration-fast) var(--motion-ease-out); }
+.ui-loading-button[aria-busy="true"] > .ui-loading-indicator { animation:ui-spinner-turn var(--motion-duration-spin) var(--motion-ease-linear) infinite; }
+.ui-copy-icon[data-ui-copy-state="success"] svg { animation:ui-check-pop var(--motion-duration-base) var(--motion-ease-out); }
+.ui-copy-status[data-ui-copy-state="success"], .ui-copy-status[data-ui-copy-state="error"],
+[data-ui-error]:not([hidden]), [data-ui-empty]:not([hidden]) { animation:ui-appear var(--motion-duration-base) var(--motion-ease-out); }
+.ui-toast:not([hidden]) { animation:ui-appear var(--motion-duration-base) var(--motion-ease-out); }
+.ui-tooltip { animation:ui-appear var(--motion-duration-base) var(--motion-ease-out), ui-content-enter var(--motion-duration-base) var(--motion-ease-out); }
+.ui-datepicker-popup:not([hidden]) { animation:ui-appear var(--motion-duration-base) var(--motion-ease-out); }
+[data-ui-panel]:not([hidden]), .accordion details[open] > :not(summary), .tip-disclosure[open] > :not(summary) { animation:ui-appear var(--motion-duration-base) var(--motion-ease-out), ui-content-enter var(--motion-duration-base) var(--motion-ease-out); }
+progress[value]::-webkit-progress-value { transition:width var(--motion-duration-base) var(--motion-ease-out), background-color var(--motion-duration-base) var(--motion-ease-out); }
+progress[value]::-moz-progress-bar { transition:width var(--motion-duration-base) var(--motion-ease-out), background-color var(--motion-duration-base) var(--motion-ease-out); }
+[data-ui-card] { transition:opacity var(--motion-duration-base) var(--motion-ease-out), box-shadow var(--motion-duration-base) var(--motion-ease-out), border-color var(--motion-duration-base) var(--motion-ease-out), background-color var(--motion-duration-base) var(--motion-ease-out), translate var(--motion-duration-fast) var(--motion-ease-out); }
+[data-ui-column] { transition:background-color var(--motion-duration-base) var(--motion-ease-out), outline-color var(--motion-duration-base) var(--motion-ease-out); }
+/* Calendar redraws are immediate, including calendars embedded in date pickers. */
+.ui-calendar :is(.btn, .ui-calendar-day, .ui-calendar-nav) { transition:none; }
+.ui-calendar .btn:active:not(:disabled):not([aria-disabled="true"]) { scale:none; }
+@keyframes ui-content-enter { from { translate:0 4px; } to { translate:0 0; } }
+@keyframes ui-check-pop { from { scale:.75; } to { scale:1; } }
+@media (prefers-reduced-motion:reduce) {
+  .btn, .ui-copy-icon, .btn-close,
+  :is(.tabs [role="tab"], .nav-pills .nav-link, .pagination button, .app-sidebar a, .ui-calendar-day, .ui-calendar-nav),
+  .alert, .form-control, .form-select, .form-check-input, .switch input, .switch input::after, .ui-loading-label,
+  [data-ui-card], [data-ui-column] { transition:none; }
+  .btn:active:not(:disabled):not([aria-disabled="true"]), .ui-copy-icon:active:not(:disabled):not([aria-disabled="true"]), .btn-close:active { scale:none; }
+  .ui-copy-icon[data-ui-copy-state="success"] svg,
+  .ui-copy-status[data-ui-copy-state="success"], .ui-copy-status[data-ui-copy-state="error"],
+  [data-ui-error]:not([hidden]), [data-ui-empty]:not([hidden]),
+  .ui-toast:not([hidden]), .ui-tooltip, .ui-datepicker-popup:not([hidden]),
+  [data-ui-panel]:not([hidden]), .accordion details[open] > :not(summary), .tip-disclosure[open] > :not(summary),
+  .ui-loading-button[aria-busy="true"] > .ui-loading-indicator { animation:none; }
+  progress[value]::-webkit-progress-value { transition:none; }
+  progress[value]::-moz-progress-bar { transition:none; }
+}
+
+/* Popovers can leave the top layer visually after their semantic close.
+   Dialogs and hidden panels keep immediate display:none and use inert JS visuals. */
+@supports (transition-behavior:allow-discrete) {
+  :is(.ui-popup, .ui-select-menu, .ui-input-popup, .ui-datepicker-popup) {
+    opacity:0;
+    pointer-events:none;
+    translate:0 4px;
+    transition:opacity var(--motion-duration-fast) var(--motion-ease-in),
+      translate var(--motion-duration-fast) var(--motion-ease-in),
+      display var(--motion-duration-fast) allow-discrete,
+      overlay var(--motion-duration-fast) allow-discrete;
+  }
+  :is(.ui-popup:popover-open, .ui-select-menu:popover-open, .ui-input-popup:popover-open, .ui-datepicker-popup:popover-open) {
+    opacity:1; pointer-events:auto; translate:0 0; animation:none;
+    transition-duration:var(--motion-duration-base);
+    transition-timing-function:var(--motion-ease-out);
+  }
+  @starting-style {
+    :is(.ui-popup:popover-open, .ui-select-menu:popover-open, .ui-input-popup:popover-open, .ui-datepicker-popup:popover-open) { opacity:0; translate:0 4px; }
+  }
+  /* Position clamping measures this surface while its entrance is running. */
+  .ui-datepicker-popup, .ui-datepicker-popup:popover-open { translate:none; }
+  @starting-style { .ui-datepicker-popup:popover-open { translate:none; } }
+}
+
+/* A selected underline moves from the previous tab using a transform in ui.js. */
+.tabs:not(.tabs-pills) [role="tab"] { position:relative; }
+.tabs:not(.tabs-pills) [aria-selected="true"] { border-bottom-color:transparent; }
+.tabs:not(.tabs-pills) [aria-selected="true"]::after {
+  content:""; position:absolute; inset-inline:0; bottom:-2px; height:2px;
+  background:var(--bs-primary); transform-origin:top left; pointer-events:none;
+}
+.tabs[aria-orientation="vertical"]:not(.tabs-pills) [aria-selected="true"] { border-inline-end-color:transparent; }
+.tabs[aria-orientation="vertical"]:not(.tabs-pills) [aria-selected="true"]::after {
+  inset-inline-start:auto; inset-inline-end:-2px; top:0; bottom:0; width:2px; height:auto;
+}
+
+/* Only the disclosure height is allowed to affect layout. */
+@supports (interpolate-size:allow-keywords) and selector(details::details-content) {
+  :where(details) { interpolate-size:allow-keywords; }
+  :where(details)::details-content {
+    block-size:0; overflow:clip; content-visibility:hidden;
+    transition:block-size var(--motion-duration-base) var(--motion-ease-in),
+      content-visibility var(--motion-duration-base) allow-discrete;
+  }
+  /* Make open content focusable synchronously; only closing defers hiding. */
+  :where(details[open])::details-content { block-size:auto; content-visibility:visible; transition-duration:var(--motion-duration-base), 0s; transition-timing-function:var(--motion-ease-out); }
+  .accordion details[open] > :not(summary), .tip-disclosure[open] > :not(summary) { animation:none; }
+}
+
+/* Feedback uses existing theme colors and shadows, never geometry. */
+:where(.ui-card-link, .ui-card:has(input), [data-ui-card], .list-group-item, .table-hover > tbody > tr,
+  .app-sidebar a, .nav-link, .ui-dropdown-item, .ui-select-option, .ui-rating-choice,
+  .ui-carousel-indicators > button, .form-control, .form-select) {
+  transition:color var(--motion-duration-fast) var(--motion-ease-out),
+    background-color var(--motion-duration-base) var(--motion-ease-out),
+    border-color var(--motion-duration-base) var(--motion-ease-out),
+    box-shadow var(--motion-duration-base) var(--motion-ease-out),
+    translate var(--motion-duration-fast) var(--motion-ease-out);
+}
+:where(.ui-card-link, [data-ui-card]):is(:hover,:focus-visible) { translate:0 -1px; }
+:where(.list-group-item:is(a,button)):is(:hover,:focus-visible) { background-color:var(--bs-tertiary-bg); }
+:where(.ui-rating-star) { transition:fill var(--motion-duration-fast) var(--motion-ease-out), scale var(--motion-duration-fast) var(--motion-ease-out); }
+:where(.ui-rating-choice:has(input:checked)) .ui-rating-star { scale:1.08; }
+.ui-carousel-indicators > button::before { transition:scale var(--motion-duration-base) var(--motion-ease-out); }
+.ui-carousel-indicators > button[aria-pressed="true"]::before { width:8px; scale:2 1; }
+
+@media (prefers-reduced-motion:reduce) {
+  /* Shared CSS and dynamically created controls, including pseudo-elements.
+     Presets keep their own reduced-motion rules in animation-presets.css. */
+  *, *::before, *::after, details::details-content, .ui-dialog::backdrop {
+    transition:none !important;
+    animation:none !important;
+    scroll-behavior:auto !important;
+  }
+  :where(.ui-card-link, [data-ui-card]):is(:hover,:focus-visible) { translate:none; }
+}
+
+/* Scroll closes commit display:none immediately; the next open restores motion. */
+[popover][data-ui-motion-immediate] { transition:none !important; animation:none !important; }

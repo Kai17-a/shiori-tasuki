@@ -1,0 +1,19 @@
+/* Native select retains form submission and validation; the popup inherits UI tokens. */
+.ui-select { display:inline-grid; grid-template-columns:minmax(0,1fr); position:relative; width:100%; min-width:0; vertical-align:middle; }
+.ui-select-native { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip-path:inset(50%) !important; white-space:nowrap !important; pointer-events:none; }
+.ui-select-trigger { text-align:start; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:inherit; }
+.ui-select-trigger:disabled { cursor:not-allowed; opacity:.55; }
+.ui-select-trigger[aria-invalid="true"] { border-color:var(--bs-danger); }
+.ui-select-menu { position:fixed; inset:auto; margin:0; padding:.35rem; box-sizing:border-box; overflow:auto; overscroll-behavior:contain;
+  color:var(--bs-body-color); background:var(--ui-theme-overlay,var(--bs-body-bg)); border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius);
+  box-shadow:var(--bs-box-shadow-lg); font:inherit; z-index:1080; }
+.ui-select-option { position:relative; padding:.45rem 1.8rem .45rem .65rem; border-radius:var(--bs-border-radius-sm); overflow-wrap:anywhere; cursor:pointer; }
+.ui-select-option:is(.is-active, :hover):not([aria-disabled="true"]) { background:var(--bs-primary-bg-subtle); color:var(--bs-primary-text-emphasis); }
+.ui-select-option[aria-selected="true"] { font-weight:600; }
+.ui-select-option[aria-selected="true"]::after { content:'✓'; position:absolute; inset-inline-end:.55rem; color:var(--bs-primary); }
+.ui-select-option[aria-disabled="true"] { opacity:.45; cursor:not-allowed; }
+.ui-select-group { padding:.5rem .65rem .2rem; font-size:.8em; font-weight:600; color:var(--bs-secondary-color); }
+@media (forced-colors:active) {
+  .ui-select-option.is-active { outline:2px solid Highlight; outline-offset:-2px; }
+  .ui-select-option[aria-selected="true"]::after { color:Highlight; }
+}

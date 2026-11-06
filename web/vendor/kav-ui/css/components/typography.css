@@ -1,0 +1,79 @@
+.type-title { font-size:var(--text-2xl); font-weight:600; line-height:var(--leading-tight); margin:0 0 var(--space-4); letter-spacing:-.02em; }
+.type-heading { font-size:var(--text-xl); font-weight:600; line-height:var(--leading-tight); margin:0 0 var(--space-3); }
+.type-body { font-size:var(--text-base); line-height:var(--leading-normal); margin:0 0 var(--space-3); }
+.type-small { font-size:var(--text-sm); line-height:var(--leading-normal); }
+.type-caption { font-size:var(--text-xs); color:var(--bs-secondary-color); line-height:var(--leading-normal); }
+.type-mono { font-family:var(--bs-font-monospace); font-size:var(--text-sm); overflow-wrap:anywhere; }
+.type-prose { max-width:65ch; font-size:var(--text-base); line-height:var(--leading-relaxed); overflow-wrap:anywhere; }
+.type-prose p { margin:0 0 var(--space-4); }
+.type-truncate { display:block; max-width:22rem; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.type-wrap { overflow-wrap:anywhere; }
+.type-numeric { font-variant-numeric:tabular-nums; }
+.type-sample { display:grid; gap:var(--space-2); padding-block:var(--space-4); border-bottom:1px solid var(--bs-border-color); }
+.type-sample:last-child { border-bottom:0; }
+.type-sample > :last-child { margin:0; }
+
+/* Single-purpose utilities follow role presets, so combinations override them. */
+.type-size-xs { font-size:var(--text-xs); }
+.type-size-sm { font-size:var(--text-sm); }
+.type-size-base { font-size:var(--text-base); }
+.type-size-lg { font-size:var(--text-lg); }
+.type-size-xl { font-size:var(--text-xl); }
+.type-size-2xl { font-size:var(--text-2xl); }
+.type-size-3xl { font-size:var(--text-3xl); }
+.type-size-4xl { font-size:var(--text-4xl); }
+.type-size-5xl { font-size:var(--text-5xl); }
+.type-weight-thin { font-weight:100; }
+.type-weight-extralight { font-weight:200; }
+.type-weight-light { font-weight:300; }
+.type-weight-normal { font-weight:400; }
+.type-weight-medium { font-weight:500; }
+.type-weight-semibold { font-weight:600; }
+.type-weight-bold { font-weight:700; }
+.type-weight-extrabold { font-weight:800; }
+.type-weight-black { font-weight:900; }
+.type-color-body { color:var(--bs-body-color); }
+.type-color-muted { color:var(--bs-secondary-color); }
+.type-color-primary { color:var(--bs-primary); }
+.type-color-success { color:var(--bs-success-text-emphasis); }
+.type-color-danger { color:var(--bs-danger-text-emphasis); }
+.type-color-warning { color:var(--bs-warning-text-emphasis); }
+.type-color-info { color:var(--bs-info-text-emphasis); }
+.type-color-inherit { color:inherit; }
+.type-leading-none { line-height:var(--leading-none); }
+.type-leading-tight { line-height:var(--leading-tight); }
+.type-leading-snug { line-height:var(--leading-snug); }
+.type-leading-normal { line-height:var(--leading-normal); }
+.type-leading-relaxed { line-height:var(--leading-relaxed); }
+.type-leading-loose { line-height:var(--leading-loose); }
+.type-tracking-tight { letter-spacing:var(--tracking-tight); }
+.type-tracking-normal { letter-spacing:var(--tracking-normal); }
+.type-tracking-wide { letter-spacing:var(--tracking-wide); }
+.type-tracking-wider { letter-spacing:var(--tracking-wider); }
+
+.type-font-sans { font-family:var(--bs-body-font-family); }
+.type-font-mono { font-family:var(--bs-font-monospace); }
+.type-align-start { text-align:start; }
+.type-align-center { text-align:center; }
+.type-align-end { text-align:end; }
+.type-align-justify { text-align:justify; }
+.type-italic { font-style:italic; }
+.type-upright { font-style:normal; }
+.type-underline { text-decoration-line:underline; text-underline-offset:.15em; }
+.type-strike { text-decoration-line:line-through; }
+.type-no-decoration { text-decoration-line:none; }
+.type-uppercase { text-transform:uppercase; }
+.type-lowercase { text-transform:lowercase; }
+.type-capitalize { text-transform:capitalize; }
+.type-normal-case { text-transform:none; }
+.type-whitespace-normal { white-space:normal; }
+.type-nowrap { white-space:nowrap; }
+.type-pre-wrap { white-space:pre-wrap; overflow-wrap:anywhere; }
+.type-break-all { word-break:break-all; }
+.type-break-normal { word-break:normal; overflow-wrap:normal; }
+.type-clamp-2, .type-clamp-3 { display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; }
+.type-clamp-2 { -webkit-line-clamp:2; line-clamp:2; }
+.type-clamp-3 { -webkit-line-clamp:3; line-clamp:3; }
+.type-list-disc { list-style-type:disc; padding-inline-start:1.5em; }
+.type-list-decimal { list-style-type:decimal; padding-inline-start:1.5em; }
+.type-list-none { list-style:none; padding-inline-start:0; }

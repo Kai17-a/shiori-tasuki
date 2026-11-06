@@ -1,0 +1,110 @@
+/* Agent diagrams use authored lists and native details; no graph runtime required. */
+.ui-agent-workflow { --ui-agent-line:var(--bs-border-color); color:var(--bs-body-color); }
+.ui-agent-workflow :is(ol,ul) { list-style:none; margin:0; padding:0; }
+.ui-agent-workflow :is(li,details,summary) { min-width:0; }
+.ui-agent-node { display:flex; flex-direction:column; gap:var(--space-2); min-width:0; padding:var(--space-4); border:1px solid var(--ui-agent-line); border-radius:var(--bs-border-radius-lg); background:var(--ui-theme-surface,var(--bs-body-bg)); overflow-wrap:anywhere; }
+.ui-agent-node strong { font-size:.875rem; line-height:1.5; }
+.ui-agent-node small { color:var(--bs-secondary-color); line-height:1.6; }
+.ui-agent-state { display:inline-flex; align-items:center; gap:.4rem; align-self:start; font-size:.75rem; font-weight:600; color:var(--bs-secondary-color); }
+.ui-agent-state::before { content:""; width:.4rem; height:.4rem; border:1px solid currentColor; border-radius:50%; flex-shrink:0; }
+.ui-agent-node[data-state="complete"] .ui-agent-state { color:var(--bs-success-text-emphasis); }
+.ui-agent-node[data-state="running"] { border-color:var(--bs-primary); }
+.ui-agent-node[data-state="running"] .ui-agent-state { color:var(--bs-primary-text-emphasis); }
+.ui-agent-node[data-state="blocked"] .ui-agent-state { color:var(--bs-danger-text-emphasis); }
+.ui-agent-node:is([data-state="complete"],[data-state="running"]) .ui-agent-state::before { background:currentColor; }
+.ui-agent-flow { display:flex; gap:var(--space-6); }
+.ui-agent-flow > li { position:relative; flex:1; }
+.ui-agent-flow > li:not(:last-child)::after { content:""; position:absolute; top:50%; inset-inline-start:100%; width:var(--space-6); border-top:1px solid var(--ui-agent-line); }
+.ui-agent-flow .ui-agent-node { height:100%; }
+.ui-agent-canvas { max-width:100%; overflow:auto; padding:var(--space-2); scrollbar-color:var(--bs-border-color) transparent; scrollbar-width:thin; }
+.ui-agent-canvas:focus-visible { outline:2px solid var(--bs-primary); outline-offset:2px; }
+.ui-agent-tree { display:flex; justify-content:center; min-width:42rem; }
+.ui-agent-tree li { position:relative; flex:1; padding:var(--space-6) var(--space-2) 0; }
+.ui-agent-tree > li { padding:0; }
+.ui-agent-tree .ui-agent-node { width:12rem; margin-inline:auto; }
+.ui-agent-tree ul { position:relative; display:flex; padding-top:var(--space-6); }
+.ui-agent-tree ul::before { content:""; position:absolute; top:0; left:50%; height:var(--space-6); border-left:1px solid var(--ui-agent-line); }
+.ui-agent-tree ul > li::before { content:""; position:absolute; top:0; left:0; right:0; border-top:1px solid var(--ui-agent-line); }
+.ui-agent-tree ul > li:first-child::before { left:50%; }
+.ui-agent-tree ul > li:last-child::before { right:50%; }
+.ui-agent-tree ul > li::after { content:""; position:absolute; top:0; left:50%; height:var(--space-6); border-left:1px solid var(--ui-agent-line); }
+/* Each outer branch owns its turn, so no straight stem cuts across the curve. */
+.ui-agent-tree ul > li:first-child:not(:only-child)::before { height:var(--space-6); border-left:1px solid var(--ui-agent-line); border-top-left-radius:var(--space-3); }
+.ui-agent-tree ul > li:last-child:not(:only-child)::before { height:var(--space-6); border-right:1px solid var(--ui-agent-line); border-top-right-radius:var(--space-3); }
+.ui-agent-tree ul > li:first-child:not(:only-child)::after,
+.ui-agent-tree ul > li:last-child:not(:only-child)::after { display:none; }
+.ui-agent-tree ul > li:only-child::before { display:none; }
+.ui-agent-tree-parallel > li > ul > li > .ui-agent-node { height:100%; }
+.ui-agent-merge { position:relative; display:flex; justify-content:center; min-width:42rem; padding-top:calc(var(--space-6) * 2); }
+.ui-agent-merge::before { content:""; position:absolute; top:0; left:16.6667%; right:16.6667%; height:var(--space-6); border:1px solid var(--ui-agent-line); border-top:0; border-bottom-left-radius:var(--space-3); border-bottom-right-radius:var(--space-3); }
+.ui-agent-merge::after { content:""; position:absolute; top:0; left:50%; height:calc(var(--space-6) * 2); border-left:1px solid var(--ui-agent-line); }
+.ui-agent-merge .ui-agent-node { width:12rem; }
+.ui-agent-tasks { border:1px solid var(--ui-agent-line); border-radius:var(--bs-border-radius-lg); padding:var(--space-4); background:var(--ui-theme-surface,var(--bs-body-bg)); }
+.ui-agent-tasks summary { cursor:pointer; font-size:.875rem; font-weight:600; padding-block:var(--space-2); overflow-wrap:anywhere; }
+.ui-agent-tasks summary:focus-visible { outline:2px solid var(--bs-primary); outline-offset:2px; border-radius:var(--bs-border-radius-sm); }
+.ui-agent-tasks ul { margin-inline-start:.4rem; padding-inline-start:var(--space-6); border-inline-start:1px solid var(--ui-agent-line); }
+.ui-agent-tasks li { padding-block:var(--space-1); }
+.ui-agent-task { display:flex; align-items:start; gap:var(--space-3); cursor:pointer; padding-block:var(--space-2); font-size:.875rem; overflow-wrap:anywhere; }
+.ui-agent-task input { flex-shrink:0; margin-top:.25rem; accent-color:var(--bs-primary); }
+.ui-agent-task input:checked + span { text-decoration:line-through; color:var(--bs-secondary-color); }
+.ui-agent-task input:disabled + span { color:var(--bs-secondary-color); }
+.ui-agent-task small { display:block; margin-top:var(--space-1); text-decoration:none; color:var(--bs-secondary-color); }
+@media (max-width:767px) {
+  .ui-agent-flow { flex-direction:column; }
+  .ui-agent-flow > li:not(:last-child)::after { top:100%; inset-inline-start:50%; width:0; height:var(--space-6); border-top:0; border-inline-start:1px solid var(--ui-agent-line); }
+  .ui-agent-tasks { padding:var(--space-3); }
+  .ui-agent-tasks ul { padding-inline-start:var(--space-3); }
+}
+
+/* Flow stays on the existing connector geometry; nodes and task outlines stay still. */
+.ui-agent-flowing { --ui-agent-flow-play:paused; --ui-agent-flow-duration:var(--motion-duration-pulse); }
+.ui-agent-flowing[data-ui-agent-visible] { --ui-agent-flow-play:running; }
+.ui-agent-flowing:has(> .ui-agent-motion input:not(:checked)) { --ui-agent-flow-play:paused; }
+.ui-agent-motion { display:flex; align-items:center; gap:var(--space-2); width:fit-content; margin-bottom:var(--space-3); font-size:.8125rem; cursor:pointer; }
+.ui-agent-motion input { accent-color:var(--bs-primary); }
+.ui-agent-flowing .ui-agent-flow > li:not(:last-child)::after,
+.ui-agent-flowing .ui-agent-tree ul::before,
+.ui-agent-flowing .ui-agent-tree ul > li::before,
+.ui-agent-flowing .ui-agent-tree ul > li::after,
+.ui-agent-flowing .ui-agent-merge::before,
+.ui-agent-flowing .ui-agent-merge::after {
+  --ui-agent-stream-angle:90deg;
+  border-color:transparent;
+  border-width:2px;
+  /* Match the task-card ring's white tip, fading primary tail, and soft glow. */
+  background-image:linear-gradient(var(--ui-agent-stream-angle),transparent 0% 55.56%,rgba(var(--bs-primary-rgb), .3) 72.22%,var(--bs-primary) 91.67%,#fff 98.33%,transparent 100%),linear-gradient(var(--ui-agent-line),var(--ui-agent-line));
+  background-size:192px 100%,100% 100%;
+  background-position:center,0 0;
+  background-repeat:no-repeat;
+  filter:drop-shadow(0 0 3px rgba(var(--bs-primary-rgb), .9)) drop-shadow(0 0 7px rgba(var(--bs-primary-rgb), .45));
+  background-origin:border-box;
+  mask:linear-gradient(#fff 0 0) padding-box,linear-gradient(#fff 0 0) border-box;
+  mask-composite:exclude;
+  animation:ui-agent-stream-x var(--ui-agent-flow-duration) var(--motion-ease-linear) infinite;
+  animation-play-state:var(--ui-agent-flow-play);
+  pointer-events:none;
+}
+.ui-agent-flowing .ui-agent-tree ul::before,
+.ui-agent-flowing .ui-agent-tree ul > li::after,
+.ui-agent-flowing .ui-agent-merge::after {
+  --ui-agent-stream-angle:180deg;
+  background-size:100% 192px,100% 100%;
+  animation-name:ui-agent-stream-y;
+}
+.ui-agent-flowing .ui-agent-tree ul > li:first-child:not(:only-child)::before { --ui-agent-stream-angle:270deg; animation-direction:reverse; }
+@keyframes ui-agent-stream-x { from { background-position:-192px 0,0 0; } to { background-position:calc(100% + 192px) 0,0 0; } }
+@keyframes ui-agent-stream-y { from { background-position:0 -192px,0 0; } to { background-position:0 calc(100% + 192px),0 0; } }
+@media (max-width:767px) {
+  .ui-agent-flowing .ui-agent-flow > li:not(:last-child)::after {
+    --ui-agent-stream-angle:180deg;
+    background-size:100% 192px,100% 100%;
+    animation-name:ui-agent-stream-y;
+  }
+}
+@media (pointer:coarse) { .ui-agent-motion { min-height:var(--ui-touch-target); } }
+@media (prefers-reduced-motion:reduce) {
+  .ui-agent-flowing ::before, .ui-agent-flowing ::after { animation:none !important; }
+}
+@media (forced-colors:active) {
+  .ui-agent-flowing ::before, .ui-agent-flowing ::after { animation:none !important; background:none !important; mask:none !important; filter:none !important; border-color:CanvasText !important; }
+}

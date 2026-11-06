@@ -1,0 +1,90 @@
+/* Site-wide announcements. The inner container wraps independently of the viewport. */
+.ui-banner {
+  --ui-banner-bg:var(--ui-theme-surface,var(--bs-tertiary-bg));
+  --ui-banner-color:var(--bs-body-color);
+  --ui-banner-border:var(--bs-border-color);
+  --ui-banner-solid-bg:var(--bs-body-color);
+  --ui-banner-solid-color:var(--bs-body-bg);
+  container:ui-banner / inline-size;
+  width:100%; min-width:0; border-block:1px solid var(--ui-banner-border);
+  background:var(--ui-banner-bg); color:var(--ui-banner-color);
+  backdrop-filter:var(--ui-theme-blur,none);
+  font-size:var(--text-sm); line-height:var(--leading-normal); overflow-wrap:anywhere;
+}
+.ui-banner-inner {
+  display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-3);
+  width:100%; max-width:var(--ui-banner-max-width,76rem); margin-inline:auto;
+  padding:var(--space-3) var(--space-4);
+}
+.ui-banner-icon { flex:none; width:1.25rem; height:1.25rem; }
+.ui-banner-content { flex:1 1 16rem; min-width:0; margin:0; }
+.ui-banner-title { display:block; margin:0 0 var(--space-1); color:inherit; font-size:inherit; font-weight:600; }
+.ui-banner-description { margin:0; color:inherit; }
+.ui-banner-actions { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); order:2; }
+.ui-banner a { color:inherit; text-underline-offset:.18em; }
+.ui-banner-action, .ui-banner-close {
+  display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2);
+  flex:none; min-height:2rem; padding:var(--space-1) var(--space-3);
+  border:1px solid currentColor; border-radius:var(--bs-border-radius);
+  background:transparent; color:inherit; font:inherit; font-weight:600;
+  text-decoration:none; cursor:pointer;
+}
+.ui-banner-close { order:3; width:2rem; padding:var(--space-1); border-color:transparent; }
+.ui-banner-action:hover, .ui-banner-close:hover { background:color-mix(in srgb,currentColor 10%,transparent); }
+.ui-banner-action:focus-visible, .ui-banner-close:focus-visible, .ui-banner a:focus-visible { outline-color:currentColor; }
+.ui-banner-action:disabled, .ui-banner-close:disabled { opacity:.5; cursor:not-allowed; }
+.ui-banner-inset { border:1px solid var(--ui-banner-border); border-radius:var(--bs-border-radius-lg); }
+.ui-banner-sticky { position:sticky; top:var(--ui-banner-offset,0px); z-index:20; }
+.ui-banner-floating {
+  position:fixed; z-index:1050; inset-inline:var(--space-4);
+  bottom:calc(var(--space-4) + env(safe-area-inset-bottom,0px));
+  width:auto; max-width:56rem; max-height:calc(100dvh - 2 * var(--space-4)); overflow:auto;
+  margin-inline:auto; border:1px solid var(--ui-banner-border);
+  border-radius:var(--bs-border-radius-lg); box-shadow:var(--bs-box-shadow-lg);
+}
+.ui-banner-primary {
+  --ui-banner-bg:var(--bs-primary-bg-subtle); --ui-banner-color:var(--bs-primary-text-emphasis,color-mix(in srgb,var(--bs-primary) 85%,var(--bs-body-color)));
+  --ui-banner-border:var(--bs-primary-border-subtle);
+  --ui-banner-solid-bg:var(--bs-primary-text-emphasis,color-mix(in srgb,var(--bs-primary) 85%,var(--bs-body-color))); --ui-banner-solid-color:var(--bs-primary-bg-subtle);
+}
+.ui-banner-info {
+  --ui-banner-bg:var(--bs-info-bg-subtle); --ui-banner-color:var(--bs-info-text-emphasis);
+  --ui-banner-border:var(--bs-info-border-subtle);
+  --ui-banner-solid-bg:var(--bs-info-text-emphasis); --ui-banner-solid-color:var(--bs-info-bg-subtle);
+}
+.ui-banner-success {
+  --ui-banner-bg:var(--bs-success-bg-subtle); --ui-banner-color:var(--bs-success-text-emphasis);
+  --ui-banner-border:var(--bs-success-border-subtle);
+  --ui-banner-solid-bg:var(--bs-success-text-emphasis); --ui-banner-solid-color:var(--bs-success-bg-subtle);
+}
+.ui-banner-warning {
+  --ui-banner-bg:var(--bs-warning-bg-subtle); --ui-banner-color:var(--bs-warning-text-emphasis);
+  --ui-banner-border:var(--bs-warning-border-subtle);
+  --ui-banner-solid-bg:var(--bs-warning-text-emphasis); --ui-banner-solid-color:var(--bs-warning-bg-subtle);
+}
+.ui-banner-danger {
+  --ui-banner-bg:var(--bs-danger-bg-subtle); --ui-banner-color:var(--bs-danger-text-emphasis);
+  --ui-banner-border:var(--bs-danger-border-subtle);
+  --ui-banner-solid-bg:var(--bs-danger-text-emphasis); --ui-banner-solid-color:var(--bs-danger-bg-subtle);
+}
+/* Explicit form of the default colour, for markup that names every variant. */
+.ui-banner-neutral {
+  --ui-banner-bg:var(--ui-theme-surface,var(--bs-tertiary-bg)); --ui-banner-color:var(--bs-body-color);
+  --ui-banner-border:var(--bs-border-color);
+  --ui-banner-solid-bg:var(--bs-body-color); --ui-banner-solid-color:var(--bs-body-bg);
+}
+.ui-banner-solid { background:var(--ui-banner-solid-bg); color:var(--ui-banner-solid-color); border-color:var(--ui-banner-solid-bg); }
+.ui-banner-outline { background:var(--bs-body-bg); }
+@container ui-banner (width < 768px) {
+  .ui-banner-inner { align-items:flex-start; }
+  .ui-banner-content { flex:1 1 0; }
+  .ui-banner-actions { order:4; flex-basis:100%; }
+}
+@media (pointer:coarse) { .ui-banner-action, .ui-banner-close { min-height:2.75rem; } .ui-banner-close { width:2.75rem; } }
+@media (forced-colors:active) {
+  .ui-banner { background:Canvas; color:CanvasText; border-color:CanvasText; }
+}
+
+@media (pointer:coarse) {
+  .ui-banner-inner > a, .ui-banner-actions > a { display:inline-flex; align-items:center; min-width:var(--ui-touch-target); min-height:var(--ui-touch-target); }
+}

@@ -1,0 +1,13 @@
+.ui-button-group { display:inline-flex; align-items:stretch; max-width:100%; vertical-align:middle; }
+.ui-button-group > .btn { position:relative; flex:1 1 auto; min-width:0; border-radius:0; white-space:normal; overflow-wrap:anywhere; }
+.ui-button-group > .btn + .btn { margin-inline-start:-1px; }
+.ui-button-group > .btn:first-child { border-start-start-radius:var(--bs-border-radius); border-end-start-radius:var(--bs-border-radius); }
+.ui-button-group > .btn:last-child { border-start-end-radius:var(--bs-border-radius); border-end-end-radius:var(--bs-border-radius); }
+.ui-button-group > .btn:is(:focus-visible,:focus-within) { z-index:1; }
+html:not([data-ui-focus-modality="pointer"]) .ui-button-group > .btn:has(input:focus-visible) { outline:2px solid var(--bs-primary); outline-offset:2px; }
+.ui-button-group > .btn:is([aria-pressed="true"],:has(input:checked)) { color:var(--bs-primary); background:var(--bs-primary-bg-subtle); border-color:var(--bs-primary-border-subtle); }
+.ui-button-group-vertical { flex-direction:column; }
+.ui-button-group-vertical > .btn + .btn { margin-inline-start:0; margin-block-start:-1px; }
+.ui-button-group.ui-button-group-vertical > .btn { border-radius:0; }
+.ui-button-group-vertical > .btn:first-child { border-start-start-radius:var(--bs-border-radius); border-start-end-radius:var(--bs-border-radius); }
+.ui-button-group-vertical > .btn:last-child { border-end-start-radius:var(--bs-border-radius); border-end-end-radius:var(--bs-border-radius); }

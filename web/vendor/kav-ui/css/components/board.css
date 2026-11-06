@@ -1,0 +1,15 @@
+.ui-board { position: relative; display: grid; grid-template-columns: repeat(4, minmax(11em, 1fr)); gap: 1rem; align-items: start; }
+.column h3 { margin: 0 0 .6rem; padding: .2em .1em; font-size: .95rem; display: flex; align-items: center; gap: .5em; }
+.column h3 .name { font-weight: 600; }
+.column h3 .count { color: var(--bs-secondary-color); font-weight: normal; }
+.column .none { color: var(--bs-secondary-color); padding: .2em .3em; }
+.column.drop { outline: 2px dashed var(--bs-primary); outline-offset: 2px; border-radius: var(--bs-border-radius); }
+.dot { display: inline-block; flex: none; width: .7em; height: .7em; border-radius: 50%; border: 2px solid var(--bs-secondary-color); }
+.dot-in_progress { border-color: var(--bs-primary); background: linear-gradient(90deg, var(--bs-primary) 50%, transparent 50%); }
+.dot-review { border-color: var(--bs-success); background: var(--bs-success); }
+.dot-done { border-color: var(--bs-success); }
+.dot-todo { border-color: var(--bs-secondary-color); }
+
+.ui-board-wrap { overflow-x:auto; padding:.25rem; }
+.ui-board [data-ui-move] { margin-top:.5rem; }
+.ui-board .dragged { opacity:.5; }

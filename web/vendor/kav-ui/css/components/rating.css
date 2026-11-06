@@ -1,0 +1,19 @@
+/* Native radios keep forms, reset, required and keyboard behavior. */
+.ui-rating, .ui-rating-static { --ui-rating-size:2rem; --ui-rating-color:var(--bs-primary); }
+.ui-rating { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-1); min-width:0; margin:0; padding:0; border:0; }
+.ui-rating > legend { width:100%; margin-bottom:var(--space-1); padding:0; font-size:.875rem; }
+.ui-rating-choice { position:relative; display:grid; place-items:center; flex:none; width:var(--ui-rating-size); height:var(--ui-rating-size); border-radius:var(--bs-border-radius); color:var(--bs-secondary-color); cursor:pointer; }
+.ui-rating-input { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.ui-rating-star { display:block; width:calc(var(--ui-rating-size) * .7); height:calc(var(--ui-rating-size) * .7); fill:none; stroke:currentColor; stroke-width:1.5; stroke-linejoin:round; }
+.ui-rating-choice:has(input:checked), .ui-rating-choice:has(~ .ui-rating-choice input:checked) { color:var(--ui-rating-color); }
+.ui-rating-choice:has(input:checked) .ui-rating-star, .ui-rating-choice:has(~ .ui-rating-choice input:checked) .ui-rating-star, .ui-rating-static .is-active { fill:currentColor; }
+.ui-rating-choice:has(input:focus-visible) { outline:2px solid var(--bs-primary); outline-offset:2px; }
+.ui-rating-choice:hover:not(:has(:disabled)) { background:var(--bs-primary-bg-subtle); }
+.ui-rating-choice:has(input:disabled) { opacity:.45; cursor:default; }
+.ui-rating-clear { width:auto; padding-inline:var(--space-2); font-size:.8125rem; }
+.ui-rating-sm { --ui-rating-size:1.75rem; }
+.ui-rating-lg { --ui-rating-size:2.5rem; }
+.ui-rating-warning { --ui-rating-color:var(--bs-warning); }
+.ui-rating-static { display:inline-flex; align-items:center; gap:var(--space-1); color:var(--ui-rating-color); }
+.ui-rating-static .ui-rating-star:not(.is-active) { color:var(--bs-secondary-color); }
+@media (forced-colors:active) { .ui-rating-choice:has(input:checked) { outline:1px solid Highlight; } }

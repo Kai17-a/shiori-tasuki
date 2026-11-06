@@ -1,0 +1,1425 @@
+// Dashboard logic: renders tasks and stats from the JSON API into Kav-UI components.
+(() => {
+  'use strict';
+
+  const STATUS_LABELS = { todo: '未着手', in_progress: '進行中', review: '確認中', done: '完了' };
+  const STATUS_BADGES = {
+    todo: 'badge badge-neutral rounded-pill fw-normal border',
+    in_progress: 'badge badge-neutral',
+    review: 'badge text-bg-warning',
+    done: 'badge text-bg-success',
+  };
+  const CREATOR_LABELS = { user: '手動で作成', github: 'GitHubから取り込み' };
+  const VIEWS = {
+    overview: { title: '概要', description: '自分のタスクを整理し、会話で依頼したAIの作業と結果を確認できます。' },
+    board: { title: 'ボード', description: 'カードを移動して状態を変更できます。同じ色の帯は親子のまとまりで、カードに触れると親と子が線でつながります。' },
+    github: { title: 'GitHub', description: '自分に割り当てられたIssueの同期状態と、リポジトリごとの件数です。' },
+    activity: { title: 'アクティビティ', description: 'エージェントとあなたが、いつ、どのタスクに何をしたかを新しい順に表示します。' },
+    agents: { title: 'AIエージェント', description: 'エージェントごとの作業状況と、取り組んでいるタスクです。' },
+    settings: { title: '設定', description: '画面の表示（ライト・ダーク、背景画像）を設定します。' },
+  };
+
+  const ACTOR_LABELS = { user: 'あなた', github: 'GitHub' };
+  const actorLabel = (actor) => ACTOR_LABELS[actor] ?? actor;
+  const isAgentName = (actor) => !(actor in ACTOR_LABELS);
+  const EVENT_ICONS = {
+    created: 'mdi-plus', status: 'mdi-arrow-right', updated: 'mdi-pencil',
+    assigned: 'mdi-account', note: 'mdi-message-text-outline', split: 'mdi-format-list-checks',
+  };
+  /** How often the page checks for changes made by agents in other processes. */
+  const LIVE_POLL_MS = 10000;
+  /** In-progress work without activity for this long is stalled; the server sends the real value. */
+  let stallAfterMs = 2 * 60 * 60 * 1000;
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const board = $('#board');
+  const searchInput = $('#board-search');
+  const sourceSelect = $('#board-source');
+  let config = { mcp_command: null };
+  let tasks = [];
+  let openTaskId = null;
+  let currentView = 'overview';
+
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c]);
+
+  async function api(method, path, body) {
+    const response = await fetch(path, {
+      method,
+      headers: method === 'GET' ? {} : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (response.status === 204) return null;
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    return data;
+  }
+
+  const notifyError = (title, error) =>
+    KavUI.toast({ title, body: error.message, variant: 'danger' });
+  const notifySuccess = (title, body) => KavUI.toast({ title, body, variant: 'success' });
+
+  /** "3分前" style label for an RFC 3339 UTC timestamp. */
+  function relativeTime(iso) {
+    const seconds = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+    if (Number.isNaN(seconds)) return '';
+    if (seconds < 60) return 'たった今';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}分前`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}時間前`;
+    if (seconds < 86400 * 30) return `${Math.floor(seconds / 86400)}日前`;
+    return new Date(iso).toLocaleDateString('ja-JP');
+  }
+
+  function cardMeta(task, { withRepo = true } = {}) {
+    const parts = [`#${task.id}`];
+    if (task.subtasks.total > 0) parts.push(`子タスク ${task.subtasks.done}/${task.subtasks.total}`);
+    if (task.github && withRepo) parts.push(`${task.github.repo}#${task.github.number}`);
+    if (task.created_by !== 'user') parts.push(`作成: ${task.created_by}`);
+    return parts.map(escapeHtml).join(' · ');
+  }
+
+  function subtaskProgress(task) {
+    if (task.subtasks.total === 0) return '';
+    return `<progress class="ui-progress" max="${task.subtasks.total}" value="${task.subtasks.done}" aria-label="子タスクの進捗 ${task.subtasks.done}/${task.subtasks.total}"></progress>`;
+  }
+
+  /** Work in progress with no recent activity; a parent waiting for its subtasks is not stalled. */
+  function isStalled(task) {
+    return task.status === 'in_progress'
+      && task.subtasks.done === task.subtasks.total
+      && Date.now() - Date.parse(task.last_activity_at) > stallAfterMs;
+  }
+
+  /**
+   * True only while an AI agent is doing this task right now. A person's in-progress work,
+   * a parent waiting for its subtasks, and an agent run that has gone quiet are not.
+   */
+  function isAgentWorking(task) {
+    return task.status === 'in_progress'
+      && Boolean(task.assignee) && isAgentName(task.assignee)
+      && task.subtasks.done === task.subtasks.total
+      && !isStalled(task);
+  }
+
+  function actorBadge(actor) {
+    const icon = isAgentName(actor) ? 'mdi-message-text-outline' : actor === 'github' ? 'mdi-link' : 'mdi-account';
+    return `<span class="badge badge-neutral rounded-pill fw-normal border task-card-assignee" title="担当: ${escapeHtml(actorLabel(actor))}"><span icon="${icon}" aria-hidden="true"></span>${escapeHtml(actorLabel(actor))}</span>`;
+  }
+
+  /** One-line description of a history entry, from the actor's point of view. */
+  function eventTitle(event) {
+    const who = actorLabel(event.actor);
+    switch (event.kind) {
+      case 'started': return `${who}が着手`;
+      case 'reported': return `${who}が完了を報告（確認待ち）`;
+      case 'approved': return `${who}が承認`;
+      case 'rejected': return `${who}が差し戻し`;
+      case 'failed': return `${who}が中止`;
+      case 'created': return `${who}がタスクを作成`;
+      case 'status': return `${who}が「${STATUS_LABELS[event.from_status] ?? '?'}」→「${STATUS_LABELS[event.to_status] ?? '?'}」に変更`;
+      case 'updated': return `${who}が内容を編集`;
+      case 'assigned':
+        if (!event.message) return `${who}が担当を外しました`;
+        return event.message === event.actor ? `${who}が担当になりました` : `${who}が担当を ${actorLabel(event.message)} に設定`;
+      case 'note': return isAgentName(event.actor) ? `${who}の報告` : `${who}のコメント`;
+      case 'split': return `${who}が${event.message}`;
+      default: return who;
+    }
+  }
+
+  function renderEvent(event, { withTask = false } = {}) {
+    const done = event.kind === 'approved' || (event.kind === 'status' && event.to_status === 'done');
+    const body = ['note', 'status', 'updated', 'reported', 'approved', 'rejected', 'failed'].includes(event.kind) && event.message
+      ? `<p class="event-message">${escapeHtml(event.message)}</p>` : '';
+    const task = withTask
+      ? `<a class="type-caption" href="#task-${event.task_id}">#${event.task_id} ${escapeHtml(event.task_title)}</a>` : '';
+    return `<li class="ui-timeline-item${done ? ' is-complete' : ''}${isAgentName(event.actor) ? ' is-agent' : ''}" data-event-id="${event.id}"${withTask ? ` data-select-task="${event.task_id}" tabindex="0"` : ''}>
+      <span class="ui-timeline-marker" aria-hidden="true"><span icon="${done ? 'mdi-check' : EVENT_ICONS[event.kind] ?? 'mdi-information-outline'}" aria-hidden="true"></span></span>
+      <div class="ui-timeline-content">
+        <time class="ui-timeline-date" datetime="${escapeHtml(event.created_at)}" title="${escapeHtml(new Date(event.created_at).toLocaleString('ja-JP'))}">${escapeHtml(relativeTime(event.created_at))}</time>
+        <h3 class="ui-timeline-title">${escapeHtml(eventTitle(event))}</h3>
+        ${task}
+        ${body}
+      </div>
+    </li>`;
+  }
+
+  // ---- Board -------------------------------------------------------------
+
+  /** Number of family colors defined in app.css (`.family-0` … `.family-5`). */
+  const FAMILY_COLORS = 6;
+  /** Deepest indent applied to nested subtask cards. */
+  const MAX_INDENT_DEPTH = 2;
+  const showSubtasksInput = $('#board-subtasks');
+  const subtaskLayout = $('#board-subtask-layout');
+  const donePeriod = $('#board-done-period');
+  const expandedStacks = new Set();
+  try {
+    const saved = localStorage.getItem('task-tool-done-period');
+    if ([...donePeriod.options].some((option) => option.value === saved)) donePeriod.value = saved;
+  } catch { /* Storage is optional. */ }
+
+  function withinDonePeriod(task, now = new Date()) {
+    if (task.status !== 'done' || donePeriod.value === 'all') return true;
+    const since = donePeriod.value === 'today'
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+      : now.getTime() - Number(donePeriod.value) * 86400000;
+    return Date.parse(task.completed_at ?? task.updated_at) >= since;
+  }
+  try {
+    subtaskLayout.value = localStorage.getItem('task-tool-subtask-layout') === 'stack' ? 'stack' : 'list';
+  } catch { /* Storage is optional. */ }
+
+
+  /**
+   * Parent/child structure of all tasks: the root of each task, its depth, a stable
+   * board order that keeps families together, and a color slot per family with children.
+   */
+  function taskTree() {
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const children = new Map();
+    for (const t of tasks) {
+      if (t.parent_id !== null && byId.has(t.parent_id)) {
+        if (!children.has(t.parent_id)) children.set(t.parent_id, []);
+        children.get(t.parent_id).push(t);
+      }
+    }
+    const roots = tasks.filter((t) => t.parent_id === null || !byId.has(t.parent_id));
+    const info = new Map();
+    let order = 0;
+    let familySlot = 0;
+    const visit = (task, root, depth, family) => {
+      info.set(task.id, { root, depth, family, order: order++ });
+      for (const child of children.get(task.id) ?? []) visit(child, root, depth + 1, family);
+    };
+    for (const root of roots) {
+      const family = children.has(root.id) ? familySlot++ % FAMILY_COLORS : null;
+      visit(root, root, 0, family);
+    }
+    return { byId, info };
+  }
+
+  function renderCard(task, tree, { stackWorking = false } = {}) {
+    const { root, depth, family } = tree.info.get(task.id);
+    const source = task.github
+      ? `<span class="badge badge-neutral rounded-pill fw-normal border task-card-repo" title="${escapeHtml(task.github.repo)}#${task.github.number}">${escapeHtml(task.github.repo)}#${task.github.number}</span>`
+      : '';
+    const parent = task.parent_id === null ? null : tree.byId.get(task.parent_id);
+    const parentLink = parent
+      ? `<a class="task-card-parent" href="#task-${parent.id}" title="親タスク: ${escapeHtml(parent.title)}"><span icon="mdi-arrow-up" aria-hidden="true"></span><span class="visually-hidden">親タスク</span>#${parent.id} ${escapeHtml(parent.title)}</a>`
+      : '';
+    const classes = ['task-card'];
+    // Kav-UI's chasing light ring marks only the work an AI agent is doing right now.
+    const agentWorking = isAgentWorking(task) || stackWorking;
+    if (agentWorking) classes.push('is-running');
+    if (family !== null) classes.push('has-family', `family-${family}`);
+    if (parent) classes.push('is-subtask', `depth-${Math.min(depth, MAX_INDENT_DEPTH)}`);
+    return `<article class="${classes.join(' ')}" data-ui-card="${task.id}" data-root="${root.id}" data-parent="${parent ? parent.id : ''}" draggable="true">
+      ${parentLink}
+      <h4 class="title"><a href="#task-${task.id}">${escapeHtml(task.title)}</a>${agentWorking ? `<span class="visually-hidden">（${stackWorking ? 'このまとまりのタスクを' : ''}AIが作業中）</span>` : ''}</h4>
+      ${source || task.assignee || isStalled(task) ? `<div class="ui-cluster">${source}${task.assignee ? actorBadge(task.assignee) : ''}${isStalled(task) ? '<span class="badge text-bg-warning" title="2時間以上動きがありません">停滞</span>' : ''}</div>` : ''}
+      ${task.status === 'review' ? '<span class="badge text-bg-warning">ユーザーの確認待ち</span>' : ''}
+      ${subtaskProgress(task)}
+      <div class="task-card-foot">
+        <p class="type-caption type-color-muted">${cardMeta(task, { withRepo: false })}</p>
+        <select class="form-select form-select-sm" data-ui-move aria-label="#${task.id}の移動先" title="移動先">${statusOptions(task.status)}</select>
+      </div>
+    </article>`;
+  }
+
+  /** Group only the tasks present in this column; filters never change the family key. */
+  function renderStacks(cards, tree, column) {
+    const families = new Map();
+    for (const task of cards) {
+      const root = tree.info.get(task.id).root.id;
+      if (!families.has(root)) families.set(root, []);
+      families.get(root).push(task);
+    }
+    return [...families].map(([root, members]) => {
+      if (members.length === 1) return renderCard(members[0], tree);
+      const top = members.reduce((best, task) =>
+        tree.info.get(task.id).depth < tree.info.get(best.id).depth ? task : best);
+      const rest = members.filter((task) => task !== top);
+      const key = `${root}-${column}`;
+      const expanded = expandedStacks.has(key);
+      return `<div class="task-stack${expanded ? ' is-expanded' : ''}" data-stack="${key}">
+        <div class="task-stack-deck">
+          <div class="task-stack-layers" aria-hidden="true"></div>
+          ${renderCard(top, tree, { stackWorking: !expanded && rest.some(isAgentWorking) })}
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary task-stack-toggle" aria-expanded="${expanded}" aria-controls="stack-${key}">${expanded ? '閉じる' : `+${rest.length} 件`}<span class="visually-hidden">：#${root}の${STATUS_LABELS[column]}の子タスク</span></button>
+        <div class="task-stack-rest" id="stack-${key}"${expanded ? '' : ' hidden inert aria-hidden="true"'}>${rest.map((task) => renderCard(task, tree)).join('')}</div>
+      </div>`;
+    }).join('');
+  }
+
+  /** Prefix of the board filter values that pick one GitHub repository. */
+  const REPO_SOURCE = 'repo:';
+
+  /**
+   * Rebuilds the board's source filter with one entry per synced repository, keeping the
+   * current choice; a repository that no longer has issues falls back to everything.
+   */
+  function renderSourceOptions() {
+    const counts = new Map();
+    for (const task of tasks) {
+      if (task.github) counts.set(task.github.repo, (counts.get(task.github.repo) ?? 0) + 1);
+    }
+    const repos = [...counts.keys()].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+    const options = [
+      ['all', 'すべて'],
+      ['local', 'ローカルのタスク'],
+      ['github', `GitHub: すべて（${tasks.filter((t) => t.github).length}）`],
+      ...repos.map((repo) => [REPO_SOURCE + repo, `${repo}（${counts.get(repo)}）`]),
+    ];
+    const html = options
+      .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+      .join('');
+    if (sourceSelect.innerHTML === html) return;
+    const current = sourceSelect.value;
+    sourceSelect.innerHTML = html;
+    sourceSelect.value = options.some(([value]) => value === current) ? current : 'all';
+  }
+
+  function visibleTasks(tree) {
+    const query = searchInput.value.trim().toLowerCase();
+    const source = sourceSelect.value;
+    const showSubtasks = showSubtasksInput.checked;
+    return tasks
+      .filter((task) => {
+        if (!showSubtasks && task.parent_id !== null) return false;
+        // A subtask belongs to the same source as the task at the top of its family.
+        const repo = tree.info.get(task.id).root.github?.repo ?? null;
+        if (source === 'github' && repo === null) return false;
+        if (source === 'local' && repo !== null) return false;
+        if (source.startsWith(REPO_SOURCE) && repo !== source.slice(REPO_SOURCE.length)) return false;
+        if (!query) return true;
+        const haystack = `${task.title} ${task.github?.repo ?? ''} #${task.id}`.toLowerCase();
+        return haystack.includes(query);
+      })
+      .sort((a, b) => tree.info.get(a.id).order - tree.info.get(b.id).order);
+  }
+
+  /** Longest stagger before a card's entrance starts, so big boards still settle fast. */
+  const MAX_ENTRANCE_DELAY_MS = 360;
+  /** Time for one fast entrance animation to finish after its delay. */
+  const ENTRANCE_SETTLE_MS = 350;
+  /** Delay added per card within a column for the entrance cascade. */
+  const ENTRANCE_STEP_MS = 45;
+  const ANIMATION_CLASSES = ['ui-animate', 'ui-animate-fast', 'ui-animate-slide-up', 'ui-animate-zoom-in',
+    'ui-animate-fade-in', 'ui-animate-pulse', 'ui-animate-shake'];
+  /** Status of each card on the previous render, to animate what agents changed. */
+  let renderedCardIds = null;
+
+  /** Plays one Kav-UI animation preset on an element and cleans up afterwards. */
+  function playOnce(element, effect, delayMs = 0) {
+    element.classList.remove(...ANIMATION_CLASSES);
+    element.style.removeProperty('--ui-animation-delay');
+    void element.offsetWidth; // restart the animation when the same effect repeats
+    if (delayMs) element.style.setProperty('--ui-animation-delay', `${delayMs}ms`);
+    element.classList.add('ui-animate', 'ui-animate-fast', effect);
+    element.addEventListener('animationend', () => {
+      element.classList.remove(...ANIMATION_CLASSES);
+      element.style.removeProperty('--ui-animation-delay');
+    }, { once: true });
+  }
+
+  /**
+   * Re-renders the board. `entrance` cascades every card in (opening the board),
+   * `filter` fades the result in; otherwise only cards that were not shown before zoom in.
+   */
+  function renderBoard({ entrance = false, filter = false } = {}) {
+    const tree = taskTree();
+    const matching = visibleTasks(tree);
+    const now = new Date();
+    const shown = matching.filter((task) => withinDonePeriod(task, now));
+    subtaskLayout.disabled = !showSubtasksInput.checked;
+    clearFamilyTrace();
+    KavUI.destroy(board);
+    for (const column of board.querySelectorAll('[data-ui-column]')) {
+      const cards = shown.filter((task) => task.status === column.dataset.uiColumn);
+      $('[data-ui-cards]', column).innerHTML = showSubtasksInput.checked && subtaskLayout.value === 'stack'
+        ? renderStacks(cards, tree, column.dataset.uiColumn)
+        : cards.map((task) => renderCard(task, tree)).join('');
+      setText(`[data-ui-column="${column.dataset.uiColumn}"] [data-ui-count]`, cards.length);
+      $('[data-ui-empty]', column).hidden = cards.length > 0;
+    }
+    KavUI.init(board);
+    const doneTotal = matching.filter((task) => task.status === 'done').length;
+    const doneShown = shown.filter((task) => task.status === 'done').length;
+    $('#board-done-count').textContent = `${doneShown} / ${doneTotal}`;
+    $('#board-done-count').setAttribute('aria-label', `${doneTotal}件中${doneShown}件を表示`);
+    $('#board-done-hidden').hidden = doneShown === doneTotal;
+    $('#board-done-hidden span').textContent = `古い完了 ${doneTotal - doneShown} 件は非表示`;
+
+    for (const card of board.querySelectorAll('[inert] [data-ui-card]')) card.draggable = false;
+    const previous = renderedCardIds;
+    renderedCardIds = new Map(shown.map((task) => [String(task.id), task.status]));
+    for (const column of board.querySelectorAll('[data-ui-column]')) {
+      column.querySelectorAll('[data-ui-card]').forEach((card, index) => {
+        if (card.closest('[hidden]')) return;
+        const before = previous?.get(card.dataset.uiCard);
+        if (entrance || previous === null) {
+          playOnce(card, 'ui-animate-slide-up', Math.min(index * ENTRANCE_STEP_MS, MAX_ENTRANCE_DELAY_MS));
+        } else if (filter) {
+          playOnce(card, 'ui-animate-fade-in');
+        } else if (before === undefined) {
+          playOnce(card, 'ui-animate-zoom-in');
+        } else if (before !== column.dataset.uiColumn) {
+          // An agent moved this task since the last look.
+          playOnce(card, column.dataset.uiColumn === 'done' ? 'ui-animate-pulse' : 'ui-animate-zoom-in');
+        }
+      });
+    }
+    const total = showSubtasksInput.checked ? tasks.length : tasks.filter((t) => t.parent_id === null).length;
+    $('#board-summary').textContent = shown.length === total
+      ? `${total}件`
+      : `${total}件中 ${shown.length}件を表示`;
+  }
+
+  // ---- Parent/child connectors ---------------------------------------------
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  /** Inset of a same-column tree line from the parent's left edge; children are indented 12px. */
+  const TREE_LINE_INSET = 6;
+  /** Corner radius where a tree line turns into the child card. */
+  const TREE_CORNER = 5;
+  const linkLayer = document.createElementNS(SVG_NS, 'svg');
+  linkLayer.classList.add('task-links');
+  linkLayer.setAttribute('aria-hidden', 'true');
+  board.prepend(linkLayer);
+  let tracedCard = null;
+
+  function clearFamilyTrace() {
+    tracedCard = null;
+    linkLayer.replaceChildren();
+    board.classList.remove('is-tracing');
+    for (const card of board.querySelectorAll('.is-family, .is-traced')) {
+      card.classList.remove('is-family', 'is-traced');
+    }
+  }
+
+  /** Vertical anchor of a connector on a card: near the title, not the card's middle. */
+  const anchorY = (rect) => rect.top + Math.min(rect.height / 2, 28);
+
+  /**
+   * Connector from the parent card to the child card. Within one column it is a tree
+   * line running down the indent gap below the parent; across columns it curves between
+   * the facing edges. Returns the path and the point where it meets the child.
+   */
+  function connector(parentRect, childRect, sameColumn) {
+    const py = anchorY(parentRect);
+    const cy = anchorY(childRect);
+    if (sameColumn) {
+      const x = parentRect.left + TREE_LINE_INSET;
+      return {
+        d: `M ${x} ${parentRect.bottom} L ${x} ${cy - TREE_CORNER} Q ${x} ${cy}, ${x + TREE_CORNER} ${cy} L ${childRect.left} ${cy}`,
+        end: [childRect.left, cy],
+      };
+    }
+    const rightward = childRect.left > parentRect.left;
+    const x1 = rightward ? parentRect.right : parentRect.left;
+    const x2 = rightward ? childRect.left : childRect.right;
+    const mid = (x1 + x2) / 2;
+    return { d: `M ${x1} ${py} C ${mid} ${py}, ${mid} ${cy}, ${x2} ${cy}`, end: [x2, cy] };
+  }
+
+  /** Highlights the family of `card` and draws a connector from every parent to its child. */
+  function traceFamily(card) {
+    if (card === tracedCard) return;
+    clearFamilyTrace();
+    const members = [...board.querySelectorAll(`[data-ui-card][data-root="${card.dataset.root}"]`)].filter((member) => {
+      if (member.closest('[hidden], [inert]')) return false;
+      if (!matchMedia('(min-width: 768px)').matches) return true;
+      const rect = member.getBoundingClientRect();
+      const area = member.closest('[data-ui-cards]').getBoundingClientRect();
+      // Require the entire card to be visible so every connector anchor is on screen.
+      return rect.top >= area.top && rect.bottom <= area.bottom;
+    });
+    if (members.length < 2) return;
+    tracedCard = card;
+    board.classList.add('is-tracing');
+    card.classList.add('is-traced');
+    const origin = board.getBoundingClientRect();
+    const relative = (el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        left: r.left - origin.left, right: r.right - origin.left,
+        top: r.top - origin.top, bottom: r.bottom - origin.top, height: r.height,
+      };
+    };
+    linkLayer.setAttribute('width', board.scrollWidth);
+    linkLayer.setAttribute('height', board.scrollHeight);
+    for (const member of members) {
+      member.classList.add('is-family');
+      const parent = member.dataset.parent && board.querySelector(`[data-ui-card="${member.dataset.parent}"]`);
+      if (!parent || !members.includes(parent)) continue;
+      const sameColumn = parent.closest('[data-ui-column]') === member.closest('[data-ui-column]');
+      const { d, end } = connector(relative(parent), relative(member), sameColumn);
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('pathLength', '1');
+      path.setAttribute('class', `task-link ${[...card.classList].find((c) => c.startsWith('family-')) ?? ''}`);
+      const dot = document.createElementNS(SVG_NS, 'circle');
+      dot.setAttribute('cx', end[0]);
+      dot.setAttribute('cy', end[1]);
+      dot.setAttribute('r', '3.5');
+      dot.setAttribute('class', path.getAttribute('class'));
+      linkLayer.append(path, dot);
+    }
+  }
+
+  board.addEventListener('pointerover', (event) => {
+    const card = event.target.closest('[data-ui-card]');
+    if (card) traceFamily(card);
+  });
+  board.addEventListener('pointerleave', clearFamilyTrace);
+  board.addEventListener('focusin', (event) => {
+    const card = event.target.closest('[data-ui-card]');
+    if (card) traceFamily(card);
+  });
+  board.addEventListener('focusout', (event) => {
+    if (!board.contains(event.relatedTarget)) clearFamilyTrace();
+  });
+  window.addEventListener('resize', clearFamilyTrace);
+  board.addEventListener('scroll', clearFamilyTrace, true);
+
+  donePeriod.addEventListener('change', () => {
+    try { localStorage.setItem('task-tool-done-period', donePeriod.value); } catch { /* Storage is optional. */ }
+    renderBoard({ filter: true });
+  });
+  $('#board-show-all-done').addEventListener('click', () => {
+    donePeriod.value = 'all';
+    donePeriod.dispatchEvent(new Event('change'));
+    donePeriod.focus();
+  });
+
+  searchInput.addEventListener('input', () => renderBoard({ filter: true }));
+  sourceSelect.addEventListener('change', () => renderBoard({ filter: true }));
+  showSubtasksInput.addEventListener('change', () => renderBoard({ filter: true }));
+  subtaskLayout.addEventListener('change', () => {
+    try { localStorage.setItem('task-tool-subtask-layout', subtaskLayout.value); } catch { /* Storage is optional. */ }
+    renderBoard({ filter: true });
+  });
+  board.addEventListener('click', (event) => {
+    const button = event.target.closest('.task-stack-toggle');
+    if (!button) return;
+    const key = button.closest('[data-stack]').dataset.stack;
+    const expanded = !expandedStacks.has(key);
+    if (expanded) expandedStacks.add(key);
+    else expandedStacks.delete(key);
+    renderBoard();
+    const stack = board.querySelector(`[data-stack="${key}"]`);
+    stack.querySelector('.task-stack-toggle').focus({ preventScroll: true });
+    if (expanded) playOnce(stack.querySelector('.task-stack-rest'), 'ui-animate-slide-up');
+  });
+
+
+  // ---- Dashboard widgets -------------------------------------------------
+
+  function setText(selector, text) {
+    const el = $(selector);
+    if (el) el.textContent = text;
+  }
+
+  const renderedHtml = new WeakMap();
+  function replaceRegion(root, html) {
+    if (renderedHtml.get(root) === html) return;
+    const expanded = new Set([...root.querySelectorAll('details[data-details-key][open]')]
+      .map((details) => details.dataset.detailsKey));
+    KavUI.destroy(root);
+    root.innerHTML = html;
+    for (const details of root.querySelectorAll('details[data-details-key]')) {
+      details.open = expanded.has(details.dataset.detailsKey);
+    }
+    KavUI.init(root);
+    renderedHtml.set(root, html);
+  }
+  /** Rows shown in each overview list before the rest is summarised as a link. */
+  const OVERVIEW_LIST_LIMIT = 8;
+
+  /**
+   * A compact list for an overview card: number, title (two lines at most) and one line of
+   * context. Long lists end with a link to the view that shows them all.
+   */
+  function overviewList(items, { meta, empty, more }) {
+    if (!items.length) return `<p class="overview-empty">${empty}</p>`;
+    const rows = items.slice(0, OVERVIEW_LIST_LIMIT).map((item) => {
+      const task = item.task ?? item;
+      return `<a class="ui-list-item overview-row" href="#task-${task.id}">
+        <span class="overview-id">#${task.id}</span>
+        <span class="ui-list-body">
+          <span class="ui-list-title">${escapeHtml(task.title)}</span>
+          <span class="ui-list-description">${meta(item)}</span>
+        </span>
+      </a>`;
+    }).join('');
+    const rest = items.length - OVERVIEW_LIST_LIMIT;
+    const footer = rest > 0 ? `<a class="overview-more" href="${more}">ほか ${rest} 件を見る</a>` : '';
+    return `<div class="ui-list-group ui-list-group-flush overview-list">${rows}</div>${footer}`;
+  }
+
+  /** Where a task comes from: its repository and issue, or "ローカル". */
+  const taskSource = (task) => (task.github ? `${task.github.repo}#${task.github.number}` : 'ローカル');
+
+  function renderMetrics(stats) {
+    stallAfterMs = stats.stall_after_secs * 1000;
+    const working = tasks.filter(isAgentWorking);
+    const personal = tasks.filter((t) => t.status === 'todo' && (!t.assignee || t.assignee === 'user'));
+    setText('[data-metric="working"]', working.length);
+    setText('[data-metric-note="working"]', '会話で依頼したAIの作業');
+    setText('[data-metric="personal"]', personal.length);
+    setText('[data-metric="stalled"]', tasks.filter(isStalled).length);
+    setText('[data-metric="today"]', stats.completed_today);
+    setText('[data-nav-count="working"]', working.length);
+    setText('[data-metric="review"]', stats.by_status.review);
+    replaceRegion($('#review-list'), overviewList(stats.awaiting_review, {
+      meta: (r) => `${escapeHtml(actorLabel(r.agent))} · ${escapeHtml(relativeTime(r.reported_at))}の報告 · ${escapeHtml((r.summary || '').split('\n')[0])}`,
+      empty: '確認待ちはありません。',
+      more: '#/board',
+    }));
+    replaceRegion($('#working-list'), overviewList(working, {
+      meta: (t) => `${escapeHtml(actorLabel(t.assignee))} · ${escapeHtml(relativeTime(t.last_activity_at))}に更新`,
+      empty: '作業中のAIはいません。',
+      more: '#/board',
+    }));
+    replaceRegion($('#personal-list'), overviewList(personal, {
+      meta: (t) => `${escapeHtml(taskSource(t))} · ${escapeHtml(relativeTime(t.updated_at))}に更新`,
+      empty: '未着手のタスクはありません。',
+      more: '#/board',
+    }));
+  }
+
+  function renderStalled(stats) {
+    $('#stalled-section').hidden = !stats.stalled.length;
+    $('#stalled-list').innerHTML = `<div class="ui-list-group ui-list-group-flush">${stats.stalled.map((task) => `
+      <a class="ui-list-item" href="#task-${task.id}">
+        <span class="ui-list-body">
+          <span class="ui-list-title">#${task.id} ${escapeHtml(task.title)}</span>
+          <span class="ui-list-description">${task.assignee ? `担当: ${escapeHtml(actorLabel(task.assignee))}` : '担当なし'}</span>
+        </span>
+        <span class="ui-list-meta">最後の動き: ${escapeHtml(relativeTime(task.last_activity_at))}</span>
+      </a>`).join('')}</div>`;
+  }
+
+  function renderAgents(stats) {
+    const root = $('#agent-cards');
+    if (!stats.agents.length) {
+      root.innerHTML = '<p class="type-body type-color-muted">まだAIエージェントの作業はありません。下の「MCPで接続する」の手順でエージェントを登録すると、作業がここに表示されます。</p>';
+      return;
+    }
+    root.innerHTML = stats.agents.map((agent) => {
+      const current = tasks.filter((t) => t.assignee === agent.name && t.status === 'in_progress');
+      const badge = agent.stalled ? '<span class="badge text-bg-warning">停滞あり</span>'
+        : agent.working ? '<span class="badge badge-neutral">作業中</span>'
+        : '<span class="badge badge-neutral rounded-pill fw-normal border">待機中</span>';
+      return `<article class="ui-card">
+        <div class="ui-card-header fx fx-justify-between fx-items-center sp-gap-3">
+          <h3 class="ui-card-title sp-m-0 fx-flex-1 fx-min-0 type-truncate">${escapeHtml(agent.name)}</h3>
+          <span class="fx-shrink-0">${badge}</span>
+        </div>
+        <div class="ui-card-body ui-stack">
+          <p class="type-caption sp-m-0">作業中 ${agent.working} · 今日の完了 ${agent.done_today}</p>
+          <p class="type-caption type-color-muted sp-m-0">最後の動き: ${agent.last_activity_at ? escapeHtml(relativeTime(agent.last_activity_at)) : 'なし'}</p>
+          ${current.length ? `<ul class="ui-list-group ui-list-group-flush" role="list">${current.map((t) => `
+            <li class="ui-list-item"><span class="ui-list-body"><a class="ui-list-title" href="#task-${t.id}">#${t.id} ${escapeHtml(t.title)}</a></span>${isStalled(t) ? '<span class="badge text-bg-warning">停滞</span>' : ''}</li>`).join('')}</ul>` : '<p class="type-caption type-color-muted sp-m-0">取り組み中のタスクはありません。</p>'}
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  function renderCharts(stats) {
+    const labels = stats.daily.map((d) => d.date.slice(5).replace('-', '/'));
+    KavUI.chart('#trend-chart', {
+      type: 'line',
+      label: '直近14日の作成と完了',
+      labels,
+      series: [
+        { name: '作成', values: stats.daily.map((d) => d.created) },
+        { name: '完了', values: stats.daily.map((d) => d.completed) },
+      ],
+      unit: '件',
+    });
+
+    const statusChart = $('#status-chart');
+    const hasTasks = stats.total > 0;
+    statusChart.hidden = !hasTasks;
+    $('[data-empty="status"]').hidden = hasTasks;
+    if (hasTasks) {
+      KavUI.chart(statusChart, {
+        type: 'donut',
+        label: '状態の内訳',
+        labels: Object.values(STATUS_LABELS),
+        series: [{ name: 'タスク', values: Object.keys(STATUS_LABELS).map((k) => stats.by_status[k]) }],
+        unit: '件',
+      });
+    }
+
+    const repos = stats.by_repo.length ? stats.by_repo : [{ repo: null, open: 0, done: 0 }];
+    KavUI.chart('#repo-chart', {
+      type: 'bar',
+      label: 'リポジトリ別のタスク',
+      labels: repos.map((r) => r.repo ?? 'ローカル'),
+      series: [
+        { name: '未完了', values: repos.map((r) => r.open) },
+        { name: '完了', values: repos.map((r) => r.done) },
+      ],
+      unit: '件',
+    });
+  }
+
+  function renderIssues() {
+    const root = $('#issue-table');
+    const linked = tasks.filter((t) => t.github);
+    KavUI.destroy(root);
+    $('#issue-rows').innerHTML = linked.length
+      ? linked.map((task) => `
+        <tr data-ui-row-id="task-${task.id}" data-ui-table-keywords="#${task.github.number}">
+          <td>${escapeHtml(task.github.repo)}#${task.github.number}</td>
+          <td><a href="#task-${task.id}">${escapeHtml(task.title)}</a></td>
+          <td data-ui-sort-value="${task.status}"><span class="${STATUS_BADGES[task.status]}">${STATUS_LABELS[task.status]}</span></td>
+          <td data-ui-sort-value="${escapeHtml(task.updated_at)}"><time datetime="${escapeHtml(task.updated_at)}">${escapeHtml(relativeTime(task.updated_at))}</time></td>
+        </tr>`).join('')
+      : '<tr><td colspan="4">同期したIssueはまだありません。</td></tr>';
+    KavUI.init(root);
+  }
+
+  function renderCreators(stats) {
+    const list = $('#creator-list');
+    if (!stats.by_creator.length) {
+      list.innerHTML = '<p class="ui-list-item type-caption type-color-muted">まだタスクはありません。</p>';
+      return;
+    }
+    list.innerHTML = stats.by_creator.map((c) => {
+      const isAgent = !(c.created_by in CREATOR_LABELS);
+      const icon = isAgent ? 'mdi-message-text-outline' : c.created_by === 'github' ? 'mdi-link' : 'mdi-account';
+      const name = isAgent ? `${c.created_by}（AIエージェント）` : CREATOR_LABELS[c.created_by];
+      return `<div class="ui-list-item"><span icon="${icon}" aria-hidden="true"></span><span class="ui-list-body">${escapeHtml(name)}</span><span class="badge badge-neutral">${c.count}</span></div>`;
+    }).join('');
+  }
+
+  function renderNavCounts(stats) {
+    setText('[data-nav-count="open"]', tasks.filter((t) => t.status !== 'done').length);
+    setText('[data-nav-count="github"]', tasks.filter((t) => t.github).length);
+    setText('[data-nav-count="agents"]', stats.agents.length);
+  }
+
+  const STATS_REGIONS = ['#creator-list', '#stalled-list', '#agent-cards'];
+  async function loadStats({ quiet = false } = {}) {
+    const stats = await api('GET', '/api/stats');
+    renderMetrics(stats);
+    if (quiet) return;
+    for (const id of STATS_REGIONS) KavUI.destroy($(id));
+    renderCharts(stats);
+    renderStalled(stats);
+    renderAgents(stats);
+    renderCreators(stats);
+    renderNavCounts(stats);
+    for (const id of STATS_REGIONS) KavUI.init($(id));
+    await loadLatestActivity();
+  }
+
+  // ---- Activity feed --------------------------------------------------------
+
+  const ACTIVITY_PAGE = 50;
+  const activityFeed = $('#activity-feed');
+  const activityActor = $('#activity-actor');
+  let activityEvents = [];
+  let activityExhausted = false;
+
+  async function loadLatestActivity() {
+    const latest = await api('GET', '/api/activity?limit=8');
+    const root = $('#latest-activity');
+    KavUI.destroy(root);
+    root.innerHTML = latest.length
+      ? `<ol class="ui-timeline" role="list" aria-label="最新のアクティビティ">${latest.map((e) => renderEvent(e, { withTask: true })).join('')}</ol>`
+      : '<p class="type-body type-color-muted sp-m-0">まだアクティビティはありません。</p>';
+    KavUI.init(root);
+  }
+
+  function activityMatches(event) {
+    const kind = $('#activity-kind').value;
+    if (kind !== 'all' && event.kind !== kind) return false;
+    const filter = activityActor.value;
+    if (filter === 'all') return true;
+    if (filter === 'agents') return isAgentName(event.actor);
+    return event.actor === filter;
+  }
+
+  function renderActivityFeed() {
+    const shown = activityEvents.filter(activityMatches);
+    KavUI.destroy(activityFeed);
+    activityFeed.innerHTML = shown.length
+      ? shown.map((e) => renderEvent(e, { withTask: true })).join('')
+      : '<li class="type-body type-color-muted">該当するアクティビティはありません。</li>';
+    KavUI.init(activityFeed);
+    $('#activity-more').hidden = activityExhausted;
+    setText('#activity-summary', `${activityEvents.length}件中 ${shown.length}件を表示`);
+  }
+
+  /** Loads the newest page, or the next older page when `more` is set. */
+  async function loadActivity({ more = false } = {}) {
+    const before = more && activityEvents.length ? `&before=${activityEvents.at(-1).id}` : '';
+    const page = await api('GET', `/api/activity?limit=${ACTIVITY_PAGE}${before}`);
+    activityEvents = more ? [...activityEvents, ...page] : page;
+    activityExhausted = page.length < ACTIVITY_PAGE;
+    renderActivityFeed();
+  }
+
+  activityActor.addEventListener('change', renderActivityFeed);
+  $('#activity-kind').addEventListener('change', renderActivityFeed);
+  $('#activity-more').addEventListener('click', () => loadActivity({ more: true }).catch((err) => notifyError('アクティビティを読み込めませんでした', err)));
+
+  async function refresh() {
+    const error = $('#load-error');
+    board.setAttribute('aria-busy', 'true');
+    try {
+      tasks = await api('GET', '/api/tasks?scope=all');
+      renderSourceOptions();
+      renderBoard();
+      renderIssues();
+      await loadStats();
+      if (currentView === 'activity') await loadActivity();
+      error.hidden = true;
+      if (openTaskId !== null && familyDialog.open) await openFamily(openTaskId);
+    } catch (err) {
+      $('[data-error-message]', error).textContent = err.message;
+      error.hidden = false;
+    } finally {
+      board.removeAttribute('aria-busy');
+    }
+  }
+
+  // ---- GitHub sync status -----------------------------------------------
+
+  /** How often the page asks the server whether a background sync finished. */
+  const SYNC_POLL_MS = 30000;
+  let lastSyncFinishedAt;
+
+  function renderSync(status) {
+    const badge = $('#sync-badge');
+    const errorBox = $('#sync-error');
+    const finished = status.last_finished_at
+      ? relativeTime(new Date(status.last_finished_at * 1000).toISOString())
+      : null;
+    let badgeClass = 'badge badge-neutral';
+    let badgeText = '同期中';
+    if (!status.running && status.last_error) {
+      badgeClass = 'badge text-bg-danger';
+      badgeText = '同期エラー';
+    } else if (!status.running && status.last_success_at) {
+      badgeClass = 'badge text-bg-success';
+      badgeText = '同期済み';
+    }
+    badge.className = `${badgeClass} fx-shrink-0`;
+    badge.textContent = badgeText;
+
+    const report = status.last_report;
+    const minutes = Math.round(status.interval_secs / 60);
+    setText('#sync-detail', report
+      ? `最終同期: ${finished ?? '—'}（新規 ${report.created} 件、更新 ${report.updated} 件）· ${minutes}分ごとに自動で同期します`
+      : status.running ? '初回の同期をしています…' : `${minutes}分ごとに自動で同期します`);
+    errorBox.hidden = !status.last_error;
+    setText('[data-sync-error]', status.last_error ? ` ${status.last_error}` : '');
+    setText('#sidebar-sync', status.running ? '同期中…'
+      : status.last_error ? '同期エラー'
+      : finished ? `最終同期: ${finished}` : '同期待ち');
+  }
+
+  async function loadSync() {
+    try {
+      const status = await api('GET', '/api/sync');
+      renderSync(status);
+      // Reload the dashboard once a background run has finished since the last look.
+      if (lastSyncFinishedAt !== undefined && status.last_finished_at !== lastSyncFinishedAt) {
+        await refresh();
+      }
+      lastSyncFinishedAt = status.last_finished_at;
+    } catch {
+      setText('#sidebar-sync', '同期の状態を取得できません');
+    }
+  }
+
+  // ---- Background image settings -------------------------------------------
+
+  const backgroundForm = $('#background-form');
+  const backgroundFile = $('#background-file');
+  const POSITION_LABELS = { center: '中央', top: '上', bottom: '下', left: '左', right: '右' };
+  const SIZE_LABELS = { cover: '画面いっぱい', contain: '画像全体', auto: '元の大きさ' };
+  /** Settings as saved on the server; the form may hold unsaved changes on top. */
+  let savedBackground = null;
+  let previewUrl = null;
+
+  function formatBytes(bytes) {
+    return bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
+  }
+
+  /** Draws `background` behind the glass theme through Kav-UI's background variables. */
+  function applyBackground({ imageUrl, opacity, position, size }) {
+    const style = document.body.style;
+    if (imageUrl) {
+      style.setProperty('--ui-theme-background-image', `url("${imageUrl.replace(/"/g, '%22')}")`);
+    } else {
+      style.removeProperty('--ui-theme-background-image');
+    }
+    style.setProperty('--ui-theme-background-opacity', `${opacity}%`);
+    style.setProperty('--ui-theme-background-position', position);
+    style.setProperty('--ui-theme-background-size', size);
+    const preview = $('#background-preview');
+    preview.style.backgroundImage = imageUrl ? `url("${imageUrl.replace(/"/g, '%22')}")` : '';
+    preview.style.backgroundPosition = position;
+    preview.style.backgroundSize = size;
+    preview.textContent = imageUrl ? '' : '背景画像は設定されていません。';
+    preview.classList.toggle('is-empty', !imageUrl);
+  }
+
+  /** The background currently described by the form, including an unsaved file. */
+  function formBackground() {
+    return {
+      imageUrl: previewUrl ?? savedBackground?.image?.url ?? null,
+      opacity: Number($('#background-opacity').value),
+      position: $('#background-position').value,
+      size: $('#background-size').value,
+    };
+  }
+
+  function syncSelect(select, value) {
+    select.value = value;
+    // Kav-UI's custom select menu follows a change event.
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function clearPendingFile() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    if (backgroundFile.files.length) {
+      backgroundFile.value = '';
+      backgroundFile.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+
+  function showSavedBackground(view) {
+    savedBackground = view.background;
+    const bg = savedBackground;
+    $('#background-opacity').value = bg.opacity;
+    setText('#background-opacity-value', `${bg.opacity}%`);
+    syncSelect($('#background-position'), bg.position);
+    syncSelect($('#background-size'), bg.size);
+    applyBackground({ imageUrl: bg.image?.url ?? null, opacity: bg.opacity, position: bg.position, size: bg.size });
+    setText('#background-info', bg.image
+      ? `${bg.image.content_type.replace('image/', '').toUpperCase()} · ${formatBytes(bg.image.bytes)} · 濃さ ${bg.opacity}% · ${POSITION_LABELS[bg.position]} · ${SIZE_LABELS[bg.size]} · 更新: ${relativeTime(bg.image.updated_at)}`
+      : '背景画像は設定されていません。');
+    $('[data-action="delete-background"]').disabled = !bg.image;
+  }
+
+  async function loadBackground() {
+    try {
+      showSavedBackground(await api('GET', '/api/settings'));
+    } catch {
+      // The theme's own gradient stays as the background.
+    }
+  }
+
+  backgroundFile.addEventListener('change', () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    const file = backgroundFile.files[0];
+    previewUrl = file ? URL.createObjectURL(file) : null;
+    applyBackground(formBackground());
+  });
+
+  backgroundForm.addEventListener('input', (event) => {
+    if (event.target.id === 'background-opacity') {
+      setText('#background-opacity-value', `${event.target.value}%`);
+    }
+    if (event.target !== backgroundFile) applyBackground(formBackground());
+  });
+  backgroundForm.addEventListener('change', (event) => {
+    if (event.target.matches('select')) applyBackground(formBackground());
+  });
+
+  backgroundForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = backgroundForm.querySelector('[type="submit"]');
+    KavUI.loading(button, true);
+    try {
+      const file = backgroundFile.files[0];
+      if (file) {
+        const response = await fetch('/api/settings/background/image', {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+          body: file,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      const { opacity, position, size } = formBackground();
+      const view = await api('PATCH', '/api/settings/background', { opacity, position, size });
+      clearPendingFile();
+      showSavedBackground(view);
+      notifySuccess('背景を保存しました', file ? '新しい画像を設定しました。' : '表示の設定を更新しました。');
+    } catch (err) {
+      notifyError('背景を保存できませんでした', err);
+    } finally {
+      KavUI.loading(button, false);
+    }
+  });
+
+  backgroundForm.addEventListener('click', async (event) => {
+    const action = event.target.closest('[data-action]')?.dataset.action;
+    if (action === 'reset-background') {
+      clearPendingFile();
+      if (savedBackground) showSavedBackground({ background: savedBackground });
+    } else if (action === 'delete-background') {
+      if (!window.confirm('背景画像を削除します。よろしいですか？')) return;
+      try {
+        clearPendingFile();
+        showSavedBackground(await api('DELETE', '/api/settings/background/image'));
+        notifySuccess('背景画像を削除しました', 'テーマの標準の背景に戻しました。');
+      } catch (err) {
+        notifyError('背景画像を削除できませんでした', err);
+      }
+    }
+  });
+
+  // ---- Family relationship modal -------------------------------------------
+
+  /** Agent-tree states for each status; review has no Kav-UI state, so it is styled in app.css. */
+  const NODE_STATES = { todo: 'pending', in_progress: 'pending', review: 'pending', done: 'complete' };
+  /** Kav-UI's running state is kept for tasks an AI agent is doing right now. */
+  const nodeState = (task) => (isAgentWorking(task) ? 'running' : NODE_STATES[task.status]);
+  const familyDialog = $('#family-dialog');
+  const familyBody = $('#family-body');
+
+  /** The root and descendants of a task, including a single task without relatives. */
+  function familyOf(taskId) {
+    const tree = taskTree();
+    const info = tree.info.get(taskId);
+    if (!info) return null;
+    const children = new Map();
+    for (const t of tasks) {
+      if (t.parent_id !== null && tree.info.get(t.id)?.root.id === info.root.id) {
+        if (!children.has(t.parent_id)) children.set(t.parent_id, []);
+        children.get(t.parent_id).push(t);
+      }
+    }
+    const members = tasks.filter((t) => tree.info.get(t.id)?.root.id === info.root.id);
+    return { root: info.root, children, members, family: info.family };
+  }
+
+  function renderFamilyNode(task, family, currentId) {
+    const kids = family.children.get(task.id) ?? [];
+    const current = task.id === currentId;
+    const review = task.status === 'review' ? ' is-review' : '';
+    const meta = [`#${task.id}`];
+    if (task.subtasks.total > 0) meta.push(`子タスク ${task.subtasks.done}/${task.subtasks.total}`);
+    if (task.github) meta.push(`${task.github.repo}#${task.github.number}`);
+    return `<li>
+      <div class="ui-agent-node${review}${current ? ' is-current' : ''}" data-state="${nodeState(task)}"${current ? ' aria-current="true"' : ''}>
+        <span class="ui-agent-state">${STATUS_LABELS[task.status]}</span>
+        <strong><a href="#task-${task.id}" data-action="open-task">${escapeHtml(task.title)}</a></strong>
+        <small>${meta.map(escapeHtml).join(' · ')}</small>
+      </div>
+      ${kids.length ? `<ul>${kids.map((k) => renderFamilyNode(k, family, currentId)).join('')}</ul>` : ''}
+    </li>`;
+  }
+
+  function renderFamily(family, currentId) {
+    const descendants = family.members.filter((t) => t.id !== family.root.id);
+    const counts = Object.fromEntries(Object.keys(STATUS_LABELS).map((k) => [k, 0]));
+    for (const t of descendants) counts[t.status] += 1;
+    const total = descendants.length;
+    const rate = total ? Math.round((counts.done / total) * 100) : 0;
+    const summary = Object.entries(counts).map(([k, n]) => `${STATUS_LABELS[k]} ${n}件`).join('、');
+    const segments = Object.entries(counts)
+      .filter(([, n]) => n > 0)
+      .map(([k, n]) => `<span class="family-meter-${k}" style="flex-grow:${n}"></span>`)
+      .join('');
+    const current = tasks.find((t) => t.id === currentId);
+    return `<div class="ui-stack family-${family.family ?? 0}">
+      <p class="type-body sp-m-0">${total === 0 ? 'このタスクに親子関係はありません。' : `「${escapeHtml(family.root.title)}」の下に ${total} 件のタスクがつながっています。${current && current.id !== family.root.id ? `選んだタスク（#${current.id}）を枠で示しています。` : ''}`}</p>
+      ${total > 0 ? `<section class="ui-card" aria-labelledby="family-summary-title">
+        <div class="ui-card-body ui-stack">
+          <div class="fx fx-justify-between fx-items-center sp-gap-3">
+            <h3 class="type-heading sp-m-0" id="family-summary-title">子孫タスクの状況</h3>
+            <span class="type-caption fx-shrink-0">完了 ${counts.done}/${total}（${rate}%）</span>
+          </div>
+          <div class="family-meter" role="img" aria-label="${summary}">${segments}</div>
+          <div class="ui-cluster">
+            ${Object.entries(counts).map(([k, n]) => `<span class="${STATUS_BADGES[k]}">${STATUS_LABELS[k]} ${n}</span>`).join('')}
+          </div>
+        </div>
+      </section>` : ''}
+      ${family.members.some(isAgentWorking)
+        ? `<div class="ui-agent-workflow ui-agent-flowing" data-ui-agent-flow>
+        <label class="ui-agent-motion"><input type="checkbox" checked>接続線を動かす</label>`
+        : '<div class="ui-agent-workflow">'}
+        <div class="ui-agent-canvas" tabindex="0" role="region" aria-label="タスクの親子関係の図。横スクロール可能">
+          <ul class="ui-agent-tree">${renderFamilyNode(family.root, family, currentId)}</ul>
+        </div>
+      </div>
+      <div class="ui-cluster">
+        <button type="button" class="btn btn-outline-secondary" data-action="trace-on-board" data-id="${currentId}" icon="mdi-view-grid">ボードで表示</button>
+        <button type="button" class="btn btn-primary" data-ui-dismiss="dialog">閉じる</button>
+      </div>
+    </div>`;
+  }
+
+  function statusOptions(status) {
+    return Object.entries(STATUS_LABELS).map(([value, label]) => `<option value="${value}"${status === value ? ' selected' : ''}>${label}</option>`).join('');
+  }
+
+  /** Local date and time for an RFC 3339 timestamp, e.g. "2026/11/6 9:10:23". */
+  const localTime = (iso) => new Date(iso).toLocaleString('ja-JP');
+
+  /** One `git --numstat` line ("added<TAB>removed<TAB>path") as "+1 −0 path"; binary files show "-". */
+  function numstatLine(line) {
+    const [added, removed, ...path] = line.split('\t');
+    if (!path.length) return line;
+    const count = (n, sign) => (n === '-' ? '-' : `${sign}${n}`);
+    return `${count(added, '+')} ${count(removed, '−')} ${path.join('\t')}`;
+  }
+
+  /** A titled list that shows the first three entries and folds the rest. */
+  function evidenceList(title, values = [], format = (v) => v) {
+    if (!values.length) return '';
+    const item = (v) => `<li><code>${escapeHtml(format(v))}</code></li>`;
+    const rest = values.length > 3
+      ? `<details><summary>残り${values.length - 3}件を表示</summary><ul>${values.slice(3).map(item).join('')}</ul></details>`
+      : '';
+    return `<div><p>${title}（${values.length}件）</p><ul>${values.slice(0, 3).map(item).join('')}</ul>${rest}</div>`;
+  }
+  function renderSessions(sessions = []) {
+    const outcomes = { running: '作業中', reported: '報告済み', failed: '中止', abandoned: '再着手で終了' };
+    // Newest first: the latest report is what the user reviews.
+    return `<section class="ui-stack work-record"><h3>AI の作業記録</h3>${sessions.length ? [...sessions].reverse().map((r) => {
+      const g = r.end_git || r.start_git;
+      const totals = (g?.files || []).reduce((sum, line) => { const [added, removed] = line.split('\t'); sum[0] += Number(added) || 0; sum[1] += Number(removed) || 0; return sum; }, [0, 0]);
+      return `<article class="ui-card"><div class="ui-card-body ui-stack">
+        <div class="ui-cluster">${actorBadge(r.agent)}<span class="badge badge-neutral">${outcomes[r.outcome] || escapeHtml(r.outcome)}</span></div>
+        <p><time datetime="${escapeHtml(r.started_at)}">${escapeHtml(localTime(r.started_at))}</time> → ${r.ended_at ? `<time datetime="${escapeHtml(r.ended_at)}">${escapeHtml(localTime(r.ended_at))}</time>` : '作業中'}</p>
+        ${r.thread_id ? `<label>T3 スレッド ID<input class="form-control" readonly value="${escapeHtml(r.thread_id)}" aria-label="T3 スレッド ID（コピー用）"></label>` : ''}
+        <p>作業フォルダ: ${escapeHtml(r.workdir || '未設定')}</p>
+        ${g ? `<p>ブランチ: ${escapeHtml(g.branch || '未確定')}<br><code>${escapeHtml(r.start_git?.head || 'コミットなし')} → ${escapeHtml(r.end_git?.head || '未報告')}</code></p>
+          <p>変更: ${g.files.length} ファイル · +${totals[0]} / −${totals[1]}</p>${evidenceList('コミット', g.commits)}${evidenceList('変更したファイル', g.files, numstatLine)}${evidenceList('コミットしていない変更', g.uncommitted, numstatLine)}${evidenceList('git に未登録のファイル', g.untracked)}
+          ${g.truncated ? '<p>記録は100件まで表示しています。</p>' : ''}${g.errors?.length ? `<p>${escapeHtml(g.errors.join('\n'))}</p>` : ''}` : '<p>Git の記録なし</p>'}
+        <ul>${r.links.map((l) => `<li><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label || l.url)}</a></li>`).join('')}</ul>
+        <p class="event-message">${escapeHtml(r.summary)}</p>
+      </div></article>`;
+    }).join('') : '<p>まだ着手の記録がありません。</p>'}</section>`;
+  }
+  /** Events that say what happened; status and assignee changes they cause are folded into them. */
+  const STEP_KINDS = new Set(['started', 'reported', 'approved', 'rejected', 'failed']);
+  /** How close a status change must be to a step of the same task and actor to count as part of it. */
+  const STEP_WINDOW_MS = 2000;
+
+  /**
+   * The family's history as steps: how the work was split and carried out. The full record of
+   * each task stays in its own history and work record.
+   */
+  function timelineSteps(items = []) {
+    const events = items.filter((item) => item.event).map((item) => item.event);
+    const steps = events.filter((e) => STEP_KINDS.has(e.kind));
+    const partOfStep = (e) => steps.some((step) => step.task_id === e.task_id && step.actor === e.actor
+      && Math.abs(Date.parse(step.created_at) - Date.parse(e.created_at)) <= STEP_WINDOW_MS);
+    return events.filter((e) => e.kind !== 'assigned' && !(e.kind === 'status' && partOfStep(e)));
+  }
+
+  /**
+   * A task alone has nothing to show beyond its own history, so the family-wide steps appear
+   * only when the task has a parent or children.
+   */
+  const hasFamily = (task) => task.parent_id != null || task.subtasks.total > 0;
+
+  function renderTimeline(items = []) {
+    const steps = timelineSteps(items);
+    return `<section><h3>作業の経過</h3>${steps.length
+      ? `<ol class="ui-timeline" role="list">${steps.map((event) => renderEvent(event, { withTask: true })).join('')}</ol>`
+      : '<p>まだ記録がありません。</p>'}</section>`;
+  }
+
+
+  function renderTaskDetails(data) {
+    const task = data.task;
+    const github = task.github && /^https:\/\//.test(task.github.url)
+      ? `<a href="${escapeHtml(task.github.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(task.github.repo)}#${escapeHtml(task.github.number)}</a>` : '';
+    return `<section class="ui-stack task-details" aria-label="タスクの詳細">
+      ${task.status === 'review' ? `<section class="ui-card"><div class="ui-card-body ui-stack"><h3>ユーザーの確認待ち</h3><form class="ui-stack" data-task-form="approve"><label for="approve-comment">承認コメント（任意）</label><textarea class="form-control" id="approve-comment" name="comment"></textarea><button class="btn btn-primary" type="submit">承認</button></form><form class="ui-stack" data-task-form="reject"><label for="reject-reason">差し戻しの理由（必須）</label><textarea class="form-control" id="reject-reason" name="comment" required maxlength="4000"></textarea><button class="btn btn-outline-danger" type="submit">差し戻し</button></form></div></section>` : ''}
+      ${renderSessions(data.sessions)}
+      ${hasFamily(task) ? renderTimeline(data.timeline) : ''}
+      <h3>タスクの編集</h3>
+      ${task.github ? `<p>GitHub で管理されているため、題名と説明は GitHub で編集します ${github}</p>` : ''}
+      <form class="ui-stack" data-task-form="edit" data-ui-validate novalidate>
+        <div class="field" data-ui-field><label for="edit-title">題名</label><input class="form-control" id="edit-title" name="title" required maxlength="200" pattern=".*\\S.*" value="${escapeHtml(task.title)}"${task.github ? ' readonly' : ''}><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
+        <div class="field"><label for="edit-description">説明</label><textarea class="form-control" id="edit-description" name="description" rows="4"${task.github ? ' readonly' : ''}>${escapeHtml(task.description)}</textarea></div>
+        <div class="field"><label for="edit-status">状態</label><select class="form-select" id="edit-status" name="status">${statusOptions(task.status)}</select></div>
+        <div class="ui-cluster"><button class="btn btn-primary" type="submit">変更を保存</button>${task.assignee ? actorBadge(task.assignee) : '担当なし'}</div>
+      </form>
+      <p class="sp-m-0">作業フォルダ: ${escapeHtml(task.workdir || '未設定')}</p>
+      <details data-details-key="subtask-${task.id}"><summary>子タスクを追加</summary>
+        <form class="ui-stack sp-mt-3" data-task-form="subtask" data-ui-validate novalidate>
+          <div class="field" data-ui-field><label for="subtask-title">題名（必須）</label><input class="form-control" id="subtask-title" name="title" required maxlength="200" pattern=".*\\S.*"><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
+          <div class="field"><label for="subtask-description">説明</label><textarea class="form-control" id="subtask-description" name="description" rows="2"></textarea></div>
+          <button class="btn btn-outline-primary" type="submit">子タスクを追加</button>
+        </form>
+      </details>
+      <form class="ui-stack" data-task-form="note" data-ui-validate novalidate>
+        <div class="field" data-ui-field><label for="task-note">メモ</label><textarea class="form-control" id="task-note" name="message" required maxlength="4000" rows="3"></textarea><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
+        <div><button class="btn btn-outline-primary" type="submit">メモを追加</button></div>
+      </form>
+      <details data-details-key="delete-${task.id}"><summary>タスクを削除</summary><p>このタスクとすべての子タスクを削除します。元に戻せません。</p><button class="btn btn-outline-danger" type="button" data-action="delete-task">削除を確定</button></details>
+      <h3>タスクの履歴</h3><ol class="ui-timeline" role="list">${data.history.map((e) => renderEvent(e)).join('')}</ol>
+    </section>`;
+  }
+
+  /** Opens the modal that shows how `taskId` is connected and how far its family has got. */
+  let familyRequest = 0;
+  let familyOpener = null;
+  async function openFamily(taskId, opener) {
+    const request = ++familyRequest;
+    openTaskId = taskId;
+    const family = familyOf(taskId);
+    if (!family) {
+      notifyError('タスクを読み込めませんでした', new Error('タスクが見つかりません。'));
+      openTaskId = null;
+      history.replaceState(null, '', `#/${currentView}`);
+      return;
+    }
+    if (!familyDialog.open) {
+      familyOpener = opener ?? document.activeElement;
+      // Keep the Kav-UI opener outside replaced regions; restore actual focus on close.
+      KavUI.show('#family-dialog', $('main'));
+    }
+    try {
+      const [data, timeline] = await Promise.all([api('GET', `/api/tasks/${taskId}`), api('GET', `/api/tasks/${taskId}/timeline`)]);
+      data.timeline = timeline;
+      if (request !== familyRequest || openTaskId !== taskId || !familyDialog.open) return;
+      const task = data.task;
+      setText('#family-title', `#${task.id} ${task.title}`);
+      const scrollTop = familyDialog.scrollTop;
+      replaceRegion(familyBody, renderFamily(family, taskId) + renderTaskDetails(data));
+      familyDialog.scrollTop = scrollTop;
+    } catch (err) { notifyError('タスクを読み込めませんでした', err); }
+  }
+  familyDialog.addEventListener('close', () => {
+    openTaskId = null;
+    familyRequest += 1;
+    const target = familyOpener?.isConnected && !familyOpener.closest('[hidden], [inert]')
+      ? familyOpener : (currentView === 'board' ? board : $('main'));
+    if (!target.hasAttribute('tabindex') && !target.matches('a[href], button, input')) {
+      target.setAttribute('tabindex', '-1');
+    }
+    target.focus({ preventScroll: true });
+    familyOpener = null;
+    if (location.hash.startsWith('#task-')) history.replaceState(null, '', `#/${currentView}`);
+  });
+  familyBody.addEventListener('click', (event) => {
+    const target = event.target.closest('[data-action="trace-on-board"]');
+    if (!target) return;
+    KavUI.hide('#family-dialog');
+    history.replaceState(null, '', '#/board');
+    showView('board');
+    searchInput.value = '';
+    sourceSelect.value = 'all';
+    showSubtasksInput.checked = true;
+    renderBoard();
+    const card = board.querySelector(`[data-ui-card="${target.dataset.id}"]`);
+    card?.scrollIntoView({ block: 'center' });
+    if (card) setTimeout(() => traceFamily(card), MAX_ENTRANCE_DELAY_MS + ENTRANCE_SETTLE_MS);
+  });
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href^="#task-"]');
+    if (link) {
+      event.preventDefault();
+      history.pushState(null, '', link.getAttribute('href'));
+      openFamily(Number(link.getAttribute('href').slice(6)), link);
+      return;
+    }
+    const card = event.target.closest('[data-ui-card]');
+    if (card && !event.target.closest('select, button, input, label, .ui-select')) {
+      history.pushState(null, '', `#task-${card.dataset.uiCard}`);
+      openFamily(Number(card.dataset.uiCard), card);
+    }
+  });
+
+  // Explicit user writes are the only way the dashboard changes tasks.
+  const newTaskDialog = $('#new-task-dialog');
+  const newTaskForm = $('#new-task-form');
+  document.addEventListener('click', (event) => {
+    const opener = event.target.closest('[data-action="new-task"]');
+    if (!opener) return;
+    newTaskForm.reset();
+    const select = $('#new-parent');
+    KavUI.destroy(select.parentElement);
+    select.innerHTML = '<option value="">なし</option>' + tasks.map((t) => `<option value="${t.id}">#${t.id} ${escapeHtml(t.title)}</option>`).join('');
+    KavUI.init(select.parentElement);
+    KavUI.show(newTaskDialog, opener);
+    $('#new-title').focus();
+  });
+
+  async function writeTask(form, method, path, body, message, after) {
+    const button = form.querySelector('[type="submit"]');
+    if (button?.disabled) return;
+    if (button) button.disabled = true;
+    try {
+      await api(method, path, body);
+      after?.();
+      await refresh();
+      notifySuccess(message, '');
+    } catch (error) { notifyError('保存できませんでした', error); }
+    finally { if (button?.isConnected) button.disabled = false; }
+  }
+
+  newTaskForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!newTaskForm.reportValidity()) return;
+    const values = Object.fromEntries(new FormData(newTaskForm));
+    values.parent_id = values.parent_id ? Number(values.parent_id) : null;
+    values.workdir = values.workdir.trim() || null;
+    writeTask(newTaskForm, 'POST', '/api/tasks', values, 'タスクを作成しました', () => KavUI.hide(newTaskDialog));
+  });
+
+  familyBody.addEventListener('click', (event) => {
+    const item = event.target.closest('[data-select-task]');
+    if (item && !event.target.closest('a')) openFamily(Number(item.dataset.selectTask));
+  });
+  familyBody.addEventListener('keydown', (event) => {
+    if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-select-task]')) {
+      event.preventDefault(); openFamily(Number(event.target.dataset.selectTask));
+    }
+  });
+
+  familyBody.addEventListener('submit', (event) => {
+    const form = event.target.closest('[data-task-form]');
+    if (!form) return;
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+    const kind = form.dataset.taskForm;
+    const values = Object.fromEntries(new FormData(form));
+    if (kind === 'approve' || kind === 'reject') {
+      writeTask(form, 'POST', `/api/tasks/${openTaskId}/review`, {decision: kind, comment: values.comment}, kind === 'approve' ? '承認しました' : '差し戻しました');
+      return;
+    }
+    if (kind === 'edit' && tasks.find((t) => t.id === openTaskId)?.github) {
+      delete values.title;
+      delete values.description;
+    }
+    const suffix = kind === 'subtask' ? '/subtasks' : kind === 'note' ? '/notes' : '';
+    writeTask(form, kind === 'edit' ? 'PATCH' : 'POST', `/api/tasks/${openTaskId}${suffix}`, values,
+      kind === 'note' ? 'メモを追加しました' : kind === 'subtask' ? '子タスクを追加しました' : '変更を保存しました');
+  });
+
+  familyBody.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-action="delete-task"]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      await api('DELETE', `/api/tasks/${openTaskId}`, {});
+      KavUI.hide(familyDialog);
+      await refresh();
+      notifySuccess('タスクを削除しました', '');
+    } catch (error) { notifyError('削除できませんでした', error); }
+    finally { if (button.isConnected) button.disabled = false; }
+  });
+
+  board.addEventListener('ui:move', async (event) => {
+    const { card, to } = event.detail;
+    try {
+      await api('PATCH', `/api/tasks/${card.dataset.uiCard}`, { status: to });
+      await refresh();
+      notifySuccess('状態を変更しました', STATUS_LABELS[to]);
+    } catch (error) {
+      notifyError('状態を変更できませんでした', error);
+      await refresh();
+      renderBoard();
+    }
+  });
+
+  function showView(name) {
+    const previousView = currentView;
+    currentView = name in VIEWS ? name : 'overview';
+    if (currentView === 'board' && previousView !== 'board' && renderedCardIds !== null) {
+      renderBoard({ entrance: true });
+    }
+    for (const view of document.querySelectorAll('[data-view]')) {
+      view.hidden = view.dataset.view !== currentView;
+    }
+    for (const link of document.querySelectorAll('#sidebar-nav a')) {
+      if (link.dataset.nav === currentView) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    }
+    if (currentView === 'activity' && previousView !== 'activity') {
+      loadActivity().catch((err) => notifyError('アクティビティを読み込めませんでした', err));
+    }
+    setText('#view-title', VIEWS[currentView].title);
+    setText('#view-description', VIEWS[currentView].description);
+    document.title = `${VIEWS[currentView].title} · task-tool`;
+    // app.css pins the heading and filter bar of the long views (board, activity).
+    pageContent.dataset.currentView = currentView;
+  }
+
+  // The pinned filter bar sits right under the pinned heading, whose height follows its text.
+  const pageContent = $('.app-content');
+  new ResizeObserver(([entry]) => {
+    pageContent.style.setProperty('--page-header-h', `${entry.target.getBoundingClientRect().height}px`);
+  }).observe($('.app-content .ui-page-header'), { box: 'border-box' });
+  new ResizeObserver(([entry]) => {
+    pageContent.style.setProperty('--board-toolbar-h', `${entry.target.getBoundingClientRect().height}px`);
+  }).observe($('[data-view="board"] > .ui-toolbar'), { box: 'border-box' });
+
+  // "#/board" switches the view; "#task-12" opens a task over the current view.
+  function routeFromHash() {
+    const task = /^#task-(\d+)$/.exec(location.hash);
+    if (task) {
+      openFamily(Number(task[1]));
+      return;
+    }
+    const view = /^#\/([a-z]+)$/.exec(location.hash);
+    if (familyDialog.open) KavUI.hide('#family-dialog');
+    showView(view ? view[1] : 'overview');
+    if (view && !(view[1] in VIEWS)) history.replaceState(null, '', '#/overview');
+    window.scrollTo(0, 0);
+  }
+
+  // ---- Navigation and forms ----------------------------------------------
+
+  for (const button of document.querySelectorAll('[data-action="reload"]')) {
+    button.addEventListener('click', refresh);
+  }
+
+  // ---- Live updates -----------------------------------------------------------
+
+  let lastEventId = null;
+
+  /** Refreshes when an agent (or another tab) has changed anything since the last look. */
+  async function pollChanges() {
+    if (document.hidden) return;
+    try {
+      const { id } = await api('GET', '/api/activity/latest');
+      if (lastEventId !== null && id !== lastEventId) await refresh();
+      else await loadStats({ quiet: true });
+      lastEventId = id;
+    } catch {
+      // A missed poll is retried on the next tick.
+    }
+  }
+
+  async function start() {
+    try {
+      config = await api('GET', '/api/config');
+    } catch {
+      // The dashboard still works without the optional defaults.
+    }
+    if (config.mcp_command) $('#mcp-command').textContent = config.mcp_command;
+    await loadBackground();
+    await refresh();
+    await pollChanges();
+    setInterval(pollChanges, LIVE_POLL_MS);
+    await loadSync();
+    routeFromHash();
+    setInterval(loadSync, SYNC_POLL_MS);
+  }
+
+  window.addEventListener('hashchange', routeFromHash);
+  start();
+})();

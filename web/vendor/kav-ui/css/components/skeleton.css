@@ -1,0 +1,19 @@
+/* Add skeleton-shimmer to the existing skeleton placeholder. No JavaScript needed. */
+.skeleton-shimmer { position:relative; overflow:hidden; isolation:isolate; }
+.skeleton-shimmer::after {
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(90deg, transparent, var(--bs-body-bg), transparent);
+  opacity:.65; transform:translateX(-100%);
+  animation:skeleton-shimmer-sweep var(--motion-duration-shimmer) var(--motion-ease-in-out) infinite;
+}
+.skeleton-title { height:1.25rem; }
+.skeleton-circle { width:var(--skeleton-size,3rem); height:var(--skeleton-size,3rem); flex:0 0 auto; margin:0; border-radius:50%; }
+.skeleton-media { width:100%; height:auto; aspect-ratio:16 / 9; margin:0; border-radius:var(--bs-border-radius); }
+@keyframes skeleton-shimmer-sweep { to { transform:translateX(100%); } }
+@media (prefers-reduced-motion:reduce) {
+  .skeleton-shimmer::after { animation:none; content:none; }
+}
+@media (forced-colors:active) {
+  .skeleton { background:Canvas; outline:1px solid GrayText; outline-offset:-1px; }
+  .skeleton-shimmer::after { animation:none; content:none; }
+}

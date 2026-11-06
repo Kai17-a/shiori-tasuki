@@ -1,0 +1,37 @@
+.planning-banner { position: relative; min-width: 0; overflow: hidden; padding: .55rem .7rem .65rem;
+  border: 1px solid var(--bs-primary-border-subtle);
+  border-radius: var(--bs-border-radius); background: var(--bs-primary-bg-subtle);
+  animation: planning-banner-pulse var(--motion-duration-pulse) var(--motion-ease-in-out) infinite; }
+.planning-banner::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, var(--bs-primary) 50%, transparent 100%); background-size: 200% 100%;
+  animation: planning-banner-sweep var(--motion-duration-loading) var(--motion-ease-linear) infinite; }
+.planning-banner-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .2rem 1rem; }
+.planning-banner-goal { margin-top: .25rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+@keyframes planning-banner-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0); } 50% { box-shadow: 0 0 0 3px rgba(var(--bs-primary-rgb), .2); } }
+@keyframes planning-banner-sweep { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* task-card: agent 稼働中の光るリング */
+@property --task-chase { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.task-card { position: relative; display: block; width: 100%; text-align: left; margin-bottom: .6rem; padding: .55rem .7rem .6rem;
+  border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius);
+  background: var(--faint, var(--bs-tertiary-bg)); cursor: pointer; }
+.task-card .title { font-weight: 600; }
+.task-card .where { margin: .3em 0 0; font-family: var(--bs-font-monospace); font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-card.is-running { box-shadow: 0 0 0 1px rgba(var(--bs-primary-rgb), .18); border-color: var(--bs-primary); background:var(--bs-primary-bg-subtle); }
+.task-card.is-running::after { content: ""; position: absolute; top: -1px; right: -1px; bottom: -1px; left: -1px; padding: 2px;
+  border-radius: inherit; pointer-events: none;
+  background: conic-gradient(from var(--task-chase), transparent 0deg 200deg, rgba(var(--bs-primary-rgb), .3) 260deg, var(--bs-primary) 330deg, #fff 354deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  filter: drop-shadow(0 0 3px rgba(var(--bs-primary-rgb), .9)) drop-shadow(0 0 7px rgba(var(--bs-primary-rgb), .45));
+  animation: task-card-chase var(--motion-duration-pulse) var(--motion-ease-linear) infinite; }
+@keyframes task-card-chase { to { --task-chase: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .task-card.is-running::after, .planning-banner, .planning-banner::after { animation: none; }
+  .task-card.is-running::after { background: rgba(var(--bs-primary-rgb), .6); }
+  .planning-banner { border-color: var(--bs-primary); box-shadow: none; }
+}
+
+/* ============================================================
+   notices（トースト）の固定配置 — layout.css 準拠
+   ============================================================ */

@@ -1,0 +1,8 @@
+/* --- badges --- */
+.badge { display: inline-block; padding: .35em .65em; font-size: max(.75em, var(--text-xs)); font-weight: 600; line-height: 1;
+  color: #fff; text-align: center; white-space: nowrap; vertical-align: baseline; border-radius: var(--bs-border-radius); }
+.text-bg-danger { color: var(--ui-on-danger,#fff); background-color: var(--bs-danger); }
+.text-bg-success { color: var(--ui-on-success,#fff); background-color: var(--bs-success); }
+.text-bg-warning { color: var(--ui-on-warning,#000); background-color: var(--bs-warning); }
+.bg-danger { background-color: var(--bs-danger) !important; }
+.bg-success { background-color: var(--bs-success) !important; }

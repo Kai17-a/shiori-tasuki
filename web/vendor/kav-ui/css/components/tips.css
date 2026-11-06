@@ -1,0 +1,9 @@
+.tip { border:1px solid var(--bs-info-border-subtle); padding:var(--space-3) var(--space-4); background:var(--bs-info-bg-subtle); color:var(--bs-info-text-emphasis); border-radius:var(--bs-border-radius); }
+.tip strong { display:block; margin-bottom:var(--space-1); }
+.tip p { margin:0; }
+.tip-inline { color:var(--bs-secondary-color); font-size:var(--text-xs); margin:var(--space-2) 0 0; }
+.tooltip-anchor { position:relative; display:inline-flex; align-items:center; gap:var(--space-2); max-width:100%; margin-block:var(--space-3); }
+.tooltip-bubble { position:absolute; top:calc(100% + var(--space-2)); left:0; z-index:2; width:16rem; max-width:calc(100vw - 5rem); background:var(--bs-body-color); color:var(--bs-body-bg); padding:var(--space-2) var(--space-3); font-size:var(--text-xs); line-height:var(--leading-normal); border-radius:var(--bs-border-radius); overflow-wrap:anywhere; box-shadow:var(--bs-box-shadow-sm); }
+.tooltip-stage { min-height:170px; }
+.tip-disclosure summary { cursor:pointer; color:var(--bs-primary); }
+.tip-disclosure p { margin:var(--space-2) 0 0; max-width:65ch; }

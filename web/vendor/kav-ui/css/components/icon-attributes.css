@@ -1,0 +1,6 @@
+/* Attribute icons inherit text color and default to the surrounding font size. */
+.ui-icon { display:inline-block; flex:none; width:var(--ui-icon-size,1em); height:var(--ui-icon-size,1em); vertical-align:-.125em; }
+.ui-icon-sm { --ui-icon-size:16px; }
+.ui-icon-md { --ui-icon-size:24px; }
+.ui-icon-lg { --ui-icon-size:32px; }
+.ui-icon-xl { --ui-icon-size:48px; }

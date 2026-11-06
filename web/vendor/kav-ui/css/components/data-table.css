@@ -1,0 +1,42 @@
+/* Local HTML data tables share the framework's surfaces and native controls. */
+.ui-data-table { min-width:0; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius-lg); background:var(--ui-theme-surface,var(--bs-body-bg)); color:var(--bs-body-color); box-shadow:var(--ui-theme-shadow,var(--bs-box-shadow-sm)); overflow:hidden; -webkit-backdrop-filter:var(--ui-theme-blur,none); backdrop-filter:var(--ui-theme-blur,none); }
+.ui-data-table-toolbar, .ui-data-table-footer { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-4); }
+.ui-data-table-toolbar { border-bottom:1px solid var(--bs-border-color); }
+.ui-data-table-search { display:grid; gap:6px; flex:1 1 16rem; max-width:24rem; min-width:0; font-size:var(--text-sm); }
+.ui-data-table-size { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); font-size:var(--text-sm); }
+.ui-data-table-size .form-select { width:auto; min-width:5rem; }
+.ui-data-table > .ui-table-scroll { border:0; }
+.ui-data-table .table { margin:0; }
+.ui-data-table .table caption { padding:var(--space-3) var(--space-4); text-align:start; color:var(--bs-secondary-color); font-size:var(--text-sm); }
+.ui-data-table .table th, .ui-data-table .table td { padding:var(--space-3) var(--space-4); vertical-align:middle; text-align:start; }
+.ui-data-table .table th { font-size:var(--text-sm); font-weight:500; white-space:nowrap; background:var(--ui-theme-input,var(--bs-tertiary-bg)); }
+.ui-data-table .table .ui-data-table-number { text-align:end; font-variant-numeric:tabular-nums; }
+.ui-data-table-sort { display:inline-flex; align-items:center; gap:var(--space-2); min-height:1.5rem; padding:0; border:0; border-radius:var(--bs-border-radius-sm); background:transparent; color:inherit; font:inherit; cursor:pointer; white-space:nowrap; }
+.ui-data-table-sort::after { content:'↕'; opacity:.5; font-size:.875em; }
+[aria-sort="ascending"] > .ui-data-table-sort::after { content:'↑'; opacity:1; }
+[aria-sort="descending"] > .ui-data-table-sort::after { content:'↓'; opacity:1; }
+.ui-data-table-sort:hover { color:var(--bs-body-color); }
+.ui-data-table-sort:focus-visible { outline:2px solid var(--bs-primary); outline-offset:3px; }
+.ui-data-table-sort:disabled { opacity:.5; cursor:default; }
+.ui-data-table .table tr[data-ui-row-selected] { background:var(--bs-primary-bg-subtle); color:var(--bs-primary-text-emphasis,var(--bs-body-color)); }
+.ui-data-table .table .ui-data-table-check { width:2.5rem; padding-inline:var(--space-3); }
+/* A label-less row checkbox keeps its size; the whole cell is the touch target (ui.js forwards the tap). */
+@media (pointer:coarse) {
+  .ui-data-table .table .ui-data-table-check { min-width:var(--ui-touch-target); height:var(--ui-touch-target); cursor:pointer; }
+}
+.ui-data-table .form-check-input { margin:0; vertical-align:middle; }
+.ui-data-table-empty td { text-align:center !important; padding:var(--space-6) !important; color:var(--bs-secondary-color); }
+.ui-data-table-footer { border-top:1px solid var(--bs-border-color); }
+.ui-data-table-footer p { margin:0; }
+.ui-data-table-summary { display:grid; gap:var(--space-1); font-size:var(--text-sm); color:var(--bs-secondary-color); }
+.ui-data-table-pagination { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
+.ui-data-table-pagination [data-ui-table-page-status] { font-size:var(--text-sm); font-variant-numeric:tabular-nums; }
+.ui-data-table:not([data-ui-table-ready]) [data-ui-table-controls] { display:none; }
+@media (width < 768px) {
+  .ui-data-table-toolbar, .ui-data-table-footer { padding:var(--space-3); }
+  .ui-data-table-search { max-width:none; flex-basis:100%; }
+  .ui-data-table-pagination { width:100%; justify-content:space-between; }
+}
+@media (forced-colors:active) {
+  .ui-data-table .table tr[data-ui-row-selected] { outline:1px solid Highlight; outline-offset:-1px; }
+}

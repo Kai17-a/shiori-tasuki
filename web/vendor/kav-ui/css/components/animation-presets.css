@@ -1,0 +1,57 @@
+/* Optional animation presets. Apply one effect with .ui-animate.
+   Animate a wrapper when its child already owns an animation (e.g. a spinner). */
+.ui-animate {
+  animation-duration:var(--ui-animation-duration,600ms);
+  animation-delay:var(--ui-animation-delay,0ms);
+  animation-timing-function:ease-out;
+  animation-iteration-count:1;
+  animation-fill-mode:both;
+}
+.ui-animate:where(.ui-animate-fade-in) { animation-name:ui-fx-fade-in; }
+.ui-animate:where(.ui-animate-fade-out) { animation-name:ui-fx-fade-out; }
+.ui-animate:where(.ui-animate-zoom-in) { animation-name:ui-fx-zoom-in; }
+.ui-animate:where(.ui-animate-zoom-out) { animation-name:ui-fx-zoom-out; }
+.ui-animate:where(.ui-animate-flip-in) { animation-name:ui-fx-flip-in; }
+.ui-animate:where(.ui-animate-rotate-in) { animation-name:ui-fx-rotate-in; }
+.ui-animate:where(.ui-animate-slide-up) { animation-name:ui-fx-slide-up; }
+.ui-animate:where(.ui-animate-slide-down) { animation-name:ui-fx-slide-down; }
+.ui-animate:where(.ui-animate-slide-left) { animation-name:ui-fx-slide-left; }
+.ui-animate:where(.ui-animate-slide-right) { animation-name:ui-fx-slide-right; }
+.ui-animate:where(.ui-animate-bounce) { animation-name:ui-fx-bounce; }
+.ui-animate:where(.ui-animate-shake) { animation-name:ui-fx-shake; }
+.ui-animate:where(.ui-animate-wobble) { animation-name:ui-fx-wobble; }
+.ui-animate:where(.ui-animate-swing) { animation-name:ui-fx-swing; }
+.ui-animate:where(.ui-animate-pulse) { animation-name:ui-fx-pulse; }
+.ui-animate:where(.ui-animate-heartbeat) { animation-name:ui-fx-heartbeat; }
+.ui-animate:where(.ui-animate-float) { animation-name:ui-fx-float; }
+.ui-animate:where(.ui-animate-spin) { animation-name:ui-fx-spin; }
+.ui-animate-fast { --ui-animation-duration:300ms; }
+.ui-animate-slow { --ui-animation-duration:1200ms; }
+.ui-animate-delay-200 { --ui-animation-delay:200ms; }
+.ui-animate-delay-500 { --ui-animation-delay:500ms; }
+.ui-animate-repeat { animation-iteration-count:infinite; }
+.ui-animate-paused { animation-play-state:paused; }
+.ui-animate-spin { animation-timing-function:linear; }
+.ui-animate-float, .ui-animate-pulse, .ui-animate-heartbeat { animation-timing-function:ease-in-out; }
+.ui-animate-swing { transform-origin:top center; }
+@keyframes ui-fx-fade-in { from { opacity:0; } to { opacity:1; } }
+@keyframes ui-fx-fade-out { from { opacity:1; } to { opacity:0; } }
+@keyframes ui-fx-zoom-in { from { opacity:0; scale:.8; } to { opacity:1; scale:1; } }
+@keyframes ui-fx-zoom-out { from { opacity:1; scale:1; } to { opacity:0; scale:.8; } }
+@keyframes ui-fx-slide-up { from { opacity:0; translate:0 24px; } to { opacity:1; translate:0 0; } }
+@keyframes ui-fx-slide-down { from { opacity:0; translate:0 -24px; } to { opacity:1; translate:0 0; } }
+@keyframes ui-fx-slide-left { from { opacity:0; translate:24px 0; } to { opacity:1; translate:0 0; } }
+@keyframes ui-fx-slide-right { from { opacity:0; translate:-24px 0; } to { opacity:1; translate:0 0; } }
+@keyframes ui-fx-bounce { 0%,20%,50%,80%,100% { translate:0 0; } 40% { translate:0 -20px; } 60% { translate:0 -10px; } }
+@keyframes ui-fx-shake { 0%,100% { translate:0 0; } 20%,60% { translate:-8px 0; } 40%,80% { translate:8px 0; } }
+@keyframes ui-fx-wobble { 0%,100% { translate:0 0; rotate:0deg; } 20% { translate:-10px 0; rotate:-5deg; } 40% { translate:8px 0; rotate:4deg; } 60% { translate:-5px 0; rotate:-3deg; } 80% { translate:3px 0; rotate:2deg; } }
+@keyframes ui-fx-swing { 0%,100% { rotate:0deg; } 20% { rotate:12deg; } 40% { rotate:-8deg; } 60% { rotate:5deg; } 80% { rotate:-3deg; } }
+@keyframes ui-fx-pulse { 0%,100% { scale:1; } 50% { scale:1.08; } }
+@keyframes ui-fx-heartbeat { 0%,40%,100% { scale:1; } 15%,30% { scale:1.15; } 22% { scale:1.04; } }
+@keyframes ui-fx-flip-in { from { opacity:0; transform:perspective(600px) rotateY(-70deg); } to { opacity:1; transform:perspective(600px) rotateY(0); } }
+@keyframes ui-fx-rotate-in { from { opacity:0; rotate:-30deg; scale:.85; } to { opacity:1; rotate:0deg; scale:1; } }
+@keyframes ui-fx-float { 0%,100% { translate:0 0; } 50% { translate:0 -10px; } }
+@keyframes ui-fx-spin { from { rotate:0deg; } to { rotate:360deg; } }
+@media (prefers-reduced-motion:reduce) {
+  .ui-animate { animation:none; }
+}

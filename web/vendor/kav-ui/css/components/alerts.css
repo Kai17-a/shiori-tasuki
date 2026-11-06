@@ -1,0 +1,16 @@
+/* --- alerts --- */
+.alert { position: relative; padding: .5rem .75rem; margin: 0; border: 1px solid transparent; border-radius: var(--bs-border-radius); }
+.alert-danger { color: var(--bs-danger-text-emphasis); background-color: var(--bs-danger-bg-subtle); border-color: var(--bs-danger-border-subtle); }
+.alert-success { color: var(--bs-success-text-emphasis); background-color: var(--bs-success-bg-subtle); border-color: var(--bs-success-border-subtle); }
+.notice { display: flex; gap: .8rem; align-items: flex-start; overflow-wrap: anywhere; }
+.notice .words { flex: 1; }
+.alert-info { color:var(--bs-info-text-emphasis); background:var(--bs-info-bg-subtle); border-color:var(--bs-info-border-subtle); }
+.alert-warning { color:var(--bs-warning-text-emphasis); background:var(--bs-warning-bg-subtle); border-color:var(--bs-warning-border-subtle); }
+.alert-neutral { color:var(--bs-body-color); background:var(--bs-tertiary-bg); border-color:var(--bs-border-color); }
+.alert-title { font-size:.875rem; font-weight:600; margin:0 0 .25rem; }
+.alert p { margin:.25rem 0; }
+.alert a { color:inherit; text-decoration:underline; text-underline-offset:.15em; }
+.alert-dismissible { display:flex; align-items:flex-start; gap:1rem; }
+.alert-dismissible > :first-child { flex:1; min-width:0; }
+.alert-dismissible .btn-close { flex:none; }
+.alert[hidden] { display:none; }

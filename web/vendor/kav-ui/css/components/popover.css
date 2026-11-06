@@ -1,0 +1,9 @@
+/* Native top-layer panels: no parent clipping and no external position library. */
+.ui-popup { position:fixed; inset:auto; margin:0; padding:var(--space-4); width:min(var(--ui-popover-width,20rem),calc(100vw - 16px)); max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow:auto; overscroll-behavior:contain; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius-lg); background:var(--ui-theme-overlay,var(--bs-body-bg)); color:var(--bs-body-color); box-shadow:var(--bs-box-shadow-lg); font:inherit; overflow-wrap:anywhere; }
+.ui-popup:popover-open { animation:ui-appear var(--motion-duration-base) var(--motion-ease-out); }
+.ui-popup-title { margin:0 0 var(--space-2); font-size:var(--text-base); font-weight:600; }
+.ui-popup-actions { display:flex; flex-wrap:wrap; gap:var(--space-2); margin-top:var(--space-4); }
+body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-popup { -webkit-backdrop-filter:var(--ui-theme-blur); backdrop-filter:var(--ui-theme-blur); }
+body[data-ui-theme="glassmorphism"] .ui-popup { background-image:linear-gradient(135deg,var(--ui-glass-sheen),transparent 60%); border-color:var(--ui-glass-highlight); }
+body[data-ui-theme="flat"] .ui-popup { box-shadow:none; }
+@media (prefers-reduced-motion:reduce) { .ui-popup:popover-open { animation:none; } }

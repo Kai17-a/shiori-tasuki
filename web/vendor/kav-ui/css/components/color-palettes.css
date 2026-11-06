@@ -1,0 +1,22 @@
+/* Palette selection is independent of design texture and color mode. */
+.ui-palette-switcher { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+.ui-palette-switcher .btn[aria-pressed="true"] { background:var(--bs-primary-bg-subtle); color:var(--bs-primary-text-emphasis,var(--bs-primary)); border-color:var(--bs-primary); }
+.ui-palette-swatch { display:inline-block; flex:none; width:1rem; height:1rem; border-radius:50%; border:1px solid color-mix(in srgb,var(--bs-body-color) 15%,transparent); background:var(--bs-primary); }
+.ui-palette-swatch[data-ui-palette-swatch="default"] { background:#4a607c; }
+[data-bs-theme="dark"] .ui-palette-swatch[data-ui-palette-swatch="default"] { background:#97adcc; }
+.ui-color-roles { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr)); gap:var(--space-3); }
+.ui-color-role { padding:var(--space-4); border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius); background:var(--bs-body-bg); color:var(--bs-body-color); font-size:var(--text-sm); }
+.ui-color-role-primary { background:var(--bs-primary); color:var(--ui-on-primary,#fff); border-color:var(--bs-primary); }
+.ui-color-role-container { background:var(--bs-primary-bg-subtle); color:var(--bs-primary-text-emphasis,var(--bs-primary)); }
+.ui-color-role-secondary { background:var(--md-sys-color-secondary-container,var(--bs-secondary-bg)); color:var(--md-sys-color-on-secondary-container,var(--bs-body-color)); }
+.ui-color-role-tertiary { background:var(--md-sys-color-tertiary-container,var(--bs-info-bg-subtle)); color:var(--md-sys-color-on-tertiary-container,var(--bs-info-text-emphasis)); }
+
+.ui-palette-editor { display:grid; gap:var(--space-4); min-width:0; }
+.ui-palette-editor-fields { display:grid; grid-template-columns:minmax(10rem,1fr) minmax(0,2fr); gap:var(--space-4); align-items:start; }
+.ui-palette-editor-fields > * { min-width:0; }
+.ui-palette-editor .form-label { display:block; margin-bottom:var(--space-2); }
+.ui-palette-editor .form-control[type="color"] { width:100%; }
+.ui-palette-editor .type-caption { margin:var(--space-2) 0 0; }
+.ui-palette-editor-status { margin:0; min-height:1.6em; color:var(--bs-secondary-color); font-size:var(--text-sm); }
+.ui-palette-editor-status[data-ui-error] { color:var(--bs-danger-text-emphasis); }
+@media (width < 768px) { .ui-palette-editor-fields { grid-template-columns:minmax(0,1fr); } }

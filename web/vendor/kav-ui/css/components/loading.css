@@ -1,0 +1,82 @@
+/* Loading primitives: usable with HTML/CSS alone. */
+.ui-spinner {
+  --ui-spinner-size:1.25rem;
+  display:inline-block;
+  width:var(--ui-spinner-size);
+  height:var(--ui-spinner-size);
+  flex:0 0 auto;
+  box-sizing:border-box;
+  border:2px solid currentColor;
+  border-right-color:transparent;
+  border-radius:50%;
+  vertical-align:middle;
+  animation:ui-spinner-turn var(--motion-duration-spin) var(--motion-ease-linear) infinite;
+}
+.ui-spinner-xs { --ui-spinner-size:.75rem; }
+.ui-spinner-sm { --ui-spinner-size:1rem; }
+.ui-spinner-lg { --ui-spinner-size:2rem; border-width:3px; }
+.ui-spinner-xl { --ui-spinner-size:3rem; border-width:4px; }
+.ui-loading-primary { color:var(--bs-primary); }
+.ui-loading-success { color:var(--bs-success); }
+.ui-loading-danger { color:var(--bs-danger); }
+.ui-loading-status { display:inline-flex; align-items:center; gap:var(--space-2); }
+.ui-loading-button { position:relative; gap:var(--space-2); }
+.ui-loading-button > .ui-loading-indicator { display:none; }
+.ui-loading-button[aria-busy="true"] > .ui-loading-label { opacity:0; }
+.ui-loading-button[aria-busy="true"] > .ui-loading-indicator {
+  display:inline-block; position:absolute; inset:0; margin:auto;
+}
+.ui-loading-button[aria-busy="true"]:disabled { opacity:1; cursor:wait; }
+.ui-loading-icon { min-width:2.25rem; min-height:2.25rem; padding:.375rem; }
+.ui-loading-icon svg { display:block; width:1.125rem; height:1.125rem; fill:currentColor; }
+
+/* Apply aria-busy to a card or panel to activate its border. */
+@property --ui-loading-angle { syntax:"<angle>"; inherits:false; initial-value:0deg; }
+.ui-loading-border { position:relative; }
+.ui-loading-border[aria-busy="true"]::after {
+  content:""; position:absolute; inset:-1px; padding:2px; border-radius:inherit; pointer-events:none;
+  background:conic-gradient(from var(--ui-loading-angle), transparent 0deg 210deg, var(--bs-primary) 300deg 350deg, transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite:exclude;
+  animation:ui-loading-border-turn var(--motion-duration-shimmer) var(--motion-ease-linear) infinite;
+}
+
+/* Native progress keeps its value and accessibility semantics. */
+.ui-progress {
+  --ui-progress-color:var(--bs-primary);
+  --ui-progress-track:var(--bs-secondary-bg);
+  display:block; appearance:none; width:100%; height:.5rem;
+  border:0; border-radius:999px; overflow:hidden;
+  background:var(--ui-progress-track); color:var(--ui-progress-color);
+  accent-color:var(--ui-progress-color);
+}
+.ui-progress::-webkit-progress-bar { background:var(--ui-progress-track); border-radius:inherit; }
+.ui-progress::-webkit-progress-value { background:var(--ui-progress-color); border-radius:inherit; }
+.ui-progress::-moz-progress-bar { background:var(--ui-progress-color); border-radius:inherit; }
+.ui-progress-sm { height:.25rem; }
+.ui-progress-lg { height:.875rem; }
+.ui-progress-success { --ui-progress-color:var(--bs-success); }
+.ui-progress-danger { --ui-progress-color:var(--bs-danger); }
+.ui-progress-warning { --ui-progress-color:var(--bs-warning); }
+.ui-progress:not([value]) {
+  background:linear-gradient(90deg, var(--ui-progress-track) 0% 35%, var(--ui-progress-color) 45% 55%, var(--ui-progress-track) 65% 100%);
+  background-size:250% 100%; animation:ui-progress-travel var(--motion-duration-loading) var(--motion-ease-in-out) infinite alternate;
+}
+.ui-progress:not([value])::-webkit-progress-bar { background:transparent; }
+.ui-progress:not([value])::-webkit-progress-value { background:transparent; }
+.ui-progress:indeterminate::-moz-progress-bar { background:transparent; }
+.ui-progress-heading { display:flex; flex-wrap:wrap; justify-content:space-between; gap:var(--space-2); margin-bottom:var(--space-2); font-variant-numeric:tabular-nums; }
+@keyframes ui-spinner-turn { to { transform:rotate(360deg); } }
+@keyframes ui-loading-border-turn { to { --ui-loading-angle:360deg; } }
+@keyframes ui-progress-travel { from { background-position:100% 0; } to { background-position:0 0; } }
+@media (prefers-reduced-motion:reduce) {
+  .ui-spinner, .ui-loading-border[aria-busy="true"]::after { animation:none; }
+  .ui-loading-border[aria-busy="true"]::after { background:var(--bs-primary); }
+  .ui-progress:not([value]) { animation:none; background-position:50% 0; }
+}
+@media (forced-colors:active) {
+  .ui-loading-border[aria-busy="true"]::after { animation:none; background:Highlight; }
+  .ui-progress { forced-color-adjust:none; --ui-progress-color:Highlight; --ui-progress-track:Canvas; }
+}

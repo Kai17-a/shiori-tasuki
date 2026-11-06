@@ -1,0 +1,514 @@
+/* App-specific tweaks on top of Kav-UI; colors come from its theme tokens. */
+.task-card .title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.task-card .title a:hover,
+.task-card .title a:focus-visible {
+  text-decoration: underline;
+}
+
+
+/* Full-page shell: the sidebar stays fixed while the dashboard scrolls. */
+body.ui-app > .app-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  /* overflow:hidden on the shell would stop position:sticky from working. */
+  overflow: visible;
+}
+
+@media (width >= 768px) {
+  body.ui-app > .app-shell > .app-sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    height: 100dvh;
+    overflow-y: auto;
+    border-radius: 0;
+  }
+}
+
+/* Board and activity are long pages: their heading and filter bar stay at the top while the
+   list scrolls underneath. Pinned, the two read as one panel: the heading is its top half
+   (same surface, padding and border as the bar) and the bar its bottom half, with no gap for
+   cards to show through. Phones keep them in the flow, where the wrapped bar would cover most
+   of the screen. */
+@media (width >= 768px) {
+  .app-content:is([data-current-view="board"], [data-current-view="activity"]) .ui-page-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    /* Cancel the page stack's gap so the bar joins the heading. */
+    margin-block-end: calc(-1 * var(--space-4));
+    padding: var(--space-4) var(--space-4) var(--space-3);
+    border: 1px solid var(--ui-glass-highlight, var(--bs-border-color));
+    border-block-end: 0;
+    border-radius: var(--bs-border-radius) var(--bs-border-radius) 0 0;
+    background-color: var(--ui-theme-surface, var(--bs-body-bg));
+    background-image: linear-gradient(135deg, var(--ui-glass-sheen, transparent), transparent 60%);
+    -webkit-backdrop-filter: var(--ui-theme-blur, none);
+    backdrop-filter: var(--ui-theme-blur, none);
+  }
+  .app-content:is([data-current-view="board"], [data-current-view="activity"]) [data-view] > .ui-toolbar {
+    position: sticky;
+    top: var(--page-header-h, 0px);
+    z-index: 19;
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+    -webkit-backdrop-filter: var(--ui-theme-blur, none);
+    backdrop-filter: var(--ui-theme-blur, none);
+  }
+}
+
+/* Filter bars: Kav-UI's select wrapper is full width, which pushes it below its label.
+   Size it to its content so every label sits beside its control; the minimum fits the
+   longest option, so picking one does not shift the rest of the bar. */
+.ui-toolbar-group > .ui-select {
+  width: auto;
+  min-width: 10rem;
+  max-width: min(100%, 24rem);
+}
+
+/* Table toolbars: the row count and the page buttons sit together at the top right, on the
+   search box's line rather than centred against its label and box. */
+.ui-data-table-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-self: flex-end;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-4);
+  min-height: calc(1.5em + 0.75rem + 2px);
+  min-width: 0;
+}
+/* On phones the count gets its own line and Kav-UI spreads the page buttons across the width. */
+@media (width < 768px) {
+  .ui-data-table-meta { width: 100%; justify-content: flex-start; }
+}
+
+/* Board motion: cards lift on hover.
+   Timing comes from Kav-UI's motion tokens. */
+.ui-board .task-card {
+  transition:
+    translate var(--motion-duration-base) var(--motion-ease-out),
+    box-shadow var(--motion-duration-base) var(--motion-ease-out),
+    rotate var(--motion-duration-base) var(--motion-ease-out),
+    scale var(--motion-duration-base) var(--motion-ease-out),
+    opacity var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.ui-board .task-card:hover {
+  translate: 0 -2px;
+  box-shadow: var(--bs-box-shadow-sm);
+}
+
+
+/* Board columns are panels of their own, so headings and empty states stay readable over a
+   background image, like the cards and the filter bar. */
+.ui-board .column {
+  min-height: 9rem;
+  padding: var(--space-3);
+  border: 1px solid var(--ui-glass-highlight, var(--bs-border-color));
+  border-radius: var(--bs-border-radius);
+  background-color: var(--ui-theme-surface, var(--bs-body-bg));
+  background-image: linear-gradient(135deg, var(--ui-glass-sheen, transparent), transparent 60%);
+  -webkit-backdrop-filter: var(--ui-theme-blur, none);
+  backdrop-filter: var(--ui-theme-blur, none);
+  transition: background-color var(--motion-duration-base) var(--motion-ease-out);
+}
+.ui-board .column > .ui-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.ui-board .column > .ui-section-title .count {
+  margin-inline-start: auto;
+  min-width: 1.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--bs-tertiary-bg);
+  color: var(--bs-secondary-color);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+/* Phones swipe the board sideways, so each column keeps a readable width. */
+@media (width < 768px) {
+  .ui-board { grid-template-columns: repeat(4, minmax(15rem, 1fr)); }
+  .ui-board .column { padding: var(--space-2); }
+}
+.ui-board .column > .none {
+  margin: 0;
+  padding: var(--space-4) var(--space-3);
+  border: 1px dashed var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  color: var(--bs-secondary-color);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-board .task-card,
+  .ui-board .column {
+    transition: none;
+  }
+
+}
+
+/* Long owner/repo names are cut with an ellipsis instead of overflowing the card. */
+.task-card-repo {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Card footer: details on the left, a compact status select on the right. The select is
+   how keyboard and touch users move a card, so it stays visible without a row of its own. */
+.task-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+/* In a narrow card the select moves to its own line instead of squeezing the text. */
+.task-card-foot > p {
+  flex: 1 1 6rem;
+  margin: 0;
+  min-width: 0;
+}
+/* Kav-UI wraps the select in a full-width .ui-select; size both to the status label. */
+.task-card-foot > :is([data-ui-move], .ui-select) {
+  flex: none;
+  width: auto;
+  min-width: 0;
+}
+
+/* Parent/child families on the board.
+   Each family with subtasks gets one color; subtask cards point back to their parent. */
+.family-0 { --family-color: var(--bs-primary); }
+.family-1 { --family-color: var(--bs-success); }
+.family-2 { --family-color: var(--bs-warning); }
+.family-3 { --family-color: var(--bs-info); }
+.family-4 { --family-color: var(--bs-danger); }
+.family-5 { --family-color: var(--bs-secondary-color); }
+
+.ui-board .task-card.has-family {
+  border-inline-start-width: 4px;
+  border-inline-start-color: var(--family-color);
+}
+
+.ui-board .task-card.is-subtask.depth-1 { margin-inline-start: 0.75rem; width: calc(100% - 0.75rem); }
+.ui-board .task-card.is-subtask.depth-2 { margin-inline-start: 1.5rem; width: calc(100% - 1.5rem); }
+
+.task-card-parent {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-block-end: 0.25rem;
+  font-size: var(--text-xs);
+  color: var(--family-color, var(--bs-secondary-color));
+  text-decoration: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.task-card-parent:hover,
+.task-card-parent:focus-visible {
+  text-decoration: underline;
+}
+
+.task-card-parent [icon] {
+  flex: none;
+  width: 1em;
+  height: 1em;
+}
+
+/* Connector layer: sits behind the cards, drawn only while a family is traced. */
+.ui-board > .task-links {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ui-board > .column {
+  position: relative;
+  z-index: 1;
+}
+
+.task-links .task-link {
+  stroke: var(--family-color);
+  fill: none;
+}
+
+.task-links path.task-link {
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: task-link-draw var(--motion-duration-base) var(--motion-ease-out) forwards;
+}
+
+.task-links circle.task-link {
+  fill: var(--family-color);
+  stroke: none;
+}
+
+@keyframes task-link-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.ui-board.is-tracing .task-card:not(.is-family) {
+  opacity: 0.35;
+}
+
+.ui-board .task-card.is-family {
+  box-shadow: 0 0 0 1px var(--family-color, transparent);
+}
+
+.ui-board .task-card.is-traced {
+  box-shadow: 0 0 0 2px var(--family-color, var(--bs-primary)), var(--bs-box-shadow-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-links path.task-link {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Family relationship modal. */
+.ui-dialog.family-dialog {
+  width: min(64em, 92vw);
+}
+
+.family-meter {
+  display: flex;
+  gap: 2px;
+  height: 0.75rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bs-secondary-bg);
+}
+
+.family-meter > span {
+  min-width: 0.375rem;
+  transition: flex-grow var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.family-meter-todo { background: var(--bs-secondary-color); }
+.family-meter-in_progress { background: var(--bs-primary); }
+.family-meter-review { background: var(--bs-warning); }
+.family-meter-done { background: var(--bs-success); }
+
+/* Review has no Kav-UI agent state; show it in the warning color used by review badges. */
+.ui-agent-node.is-review { border-color: var(--bs-warning); }
+.ui-agent-node.is-review .ui-agent-state { color: var(--bs-warning-text-emphasis); }
+.ui-agent-node.is-review .ui-agent-state::before { background: currentColor; }
+
+.ui-agent-node.is-current {
+  box-shadow: 0 0 0 3px var(--family-color, var(--bs-primary));
+}
+
+.ui-agent-node a {
+  color: inherit;
+}
+
+
+/* Settings: a framed preview of the background image as it is positioned on screen. */
+.background-preview {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  background-color: var(--bs-secondary-bg);
+  background-repeat: no-repeat;
+  color: var(--bs-secondary-color);
+  font-size: var(--text-xs);
+}
+
+/* Agent reports keep their line breaks. */
+.event-message {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+
+
+/* Entries written by AI agents get the primary color so they stand out from people's. */
+.ui-timeline-item.is-agent .ui-timeline-marker {
+  color: var(--bs-primary);
+}
+
+.task-card-assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.task-card-assignee [icon] {
+  flex: none;
+  width: 1em;
+  height: 1em;
+}
+
+.task-details { min-width: 0; overflow-wrap: anywhere; }
+.family-dialog { max-height: 90dvh; overflow-y: auto; }
+/* Fit small families to the modal; wider trees scroll inside their canvas. */
+.family-dialog .ui-agent-tree { min-width: 100%; width: max-content; }
+
+.ui-dialog { max-width: 92vw; }
+.task-details form { min-width: 0; }
+
+/* Decorative deck layers have no controls; the real remaining cards stay inert. */
+.task-stack { min-width: 0; margin-block-end: var(--space-3); }
+.task-stack-deck { position: relative; isolation: isolate; padding-block-end: 16px; }
+.task-stack-layers::before,
+.task-stack-layers::after {
+  content: '';
+  position: absolute;
+  inset: 8px 6px 8px;
+  z-index: -1;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  background: var(--bs-body-bg);
+  box-shadow: var(--bs-box-shadow-sm);
+}
+.task-stack-layers::after { inset: 16px 12px 0; z-index: -2; }
+.ui-board .task-stack-deck > .task-card { margin: 0; width: 100%; }
+.task-stack-toggle { margin-block: var(--space-2); }
+.task-stack.is-expanded .task-stack-layers { display: none; }
+.task-stack.is-expanded .task-stack-deck { padding-block-end: 0; }
+.task-stack-rest[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .task-stack-rest { animation: none !important; }
+}
+.task-stack-toggle {
+  color: var(--bs-body-color);
+  border-color: var(--bs-border-color);
+  background: var(--bs-body-bg);
+}
+.task-stack-toggle:hover {
+  color: var(--bs-emphasis-color);
+  background: var(--bs-tertiary-bg);
+}
+
+.work-record { min-width: 0; }
+.work-record code, .work-record p, #review-list { overflow-wrap: anywhere; }
+/* Commit ids and file names stay readable in every theme. */
+.work-record code {
+  color: var(--bs-body-color);
+  background: var(--bs-tertiary-bg);
+  border-radius: var(--bs-border-radius-sm);
+  padding-inline: 0.25em;
+}
+.work-record ul { padding-inline-start: 1.25rem; }
+.work-record input { width: 100%; min-width: 0; }
+.work-record details { min-width: 0; }
+
+/* Overview lists: rows span the card (no second box inside it), titles stop at two lines, and
+   long lists end with a link instead of growing the page. */
+:is(#review-list, #working-list, #personal-list) { padding: 0; }
+.overview-list.ui-list-group { background: transparent; }
+.overview-row { align-items: flex-start; }
+.overview-row .ui-list-body { flex: 1 1 auto; min-width: 0; }
+.overview-id {
+  flex: none;
+  min-width: 2.75rem;
+  padding-top: 0.125rem;
+  color: var(--bs-secondary-color);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.overview-row .ui-list-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: var(--text-sm);
+}
+.overview-row .ui-list-description {
+  overflow: hidden;
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-empty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--bs-secondary-color);
+  font-size: var(--text-sm);
+}
+.overview-more {
+  display: block;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--bs-border-color);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* Keep the board inside the page; only the card lists scroll on larger screens. */
+[data-ui-cards]:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
+  border-radius: var(--bs-border-radius);
+}
+.board-done-hidden { padding-block-start: var(--space-2); }
+@media (width >= 768px) {
+  .app-content[data-current-view="board"] {
+    height: 100dvh;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .app-content[data-current-view="board"] [data-view="board"] {
+    flex: 1;
+    min-height: 0;
+  }
+  [data-view="board"] > .ui-board-wrap {
+    height: calc(100dvh - var(--page-header-h) - var(--board-toolbar-h) - 4 * var(--space-4));
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  [data-view="board"] .ui-board { height: 100%; min-height: 0; min-width: calc(44em + 3rem); overflow: hidden; }
+  .ui-board .column { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; min-height: 0; overflow: hidden; }
+  .ui-board [data-ui-cards] { min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; flex: 1; padding: 2px; }
+  /* An empty column keeps its "no tasks" note right under the heading, not at the bottom. */
+  .ui-board [data-ui-cards]:not(:has([data-ui-card])) { flex: none; }
+  .ui-board .column > .ui-section-title,
+  .board-done-hidden,
+  .ui-board .column > .none { flex: none; }
+  .ui-board > .task-links { overflow: hidden; max-height: 100%; }
+}
+
+/* Title and description of a task synced from GitHub: shown, but clearly not editable here. */
+.task-details .form-control[readonly] {
+  background-color: var(--bs-tertiary-bg);
+  border-style: dashed;
+  color: var(--bs-secondary-color);
+  cursor: default;
+}
+.task-details .form-control[readonly]:focus { box-shadow: none; }

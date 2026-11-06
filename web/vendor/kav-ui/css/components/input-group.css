@@ -1,0 +1,24 @@
+.ui-input-group { display:flex; align-items:stretch; width:100%; min-width:0; border-radius:var(--bs-border-radius); }
+.ui-input-group > :is(.form-control,.form-select,.ui-select,.ui-input-picker,.ui-datepicker) { flex:1 1 0%; min-width:0; width:0; }
+.ui-input-addon { display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2); max-width:45%; padding:.375rem .75rem; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius); background:var(--bs-tertiary-bg); color:var(--bs-secondary-color); overflow-wrap:anywhere; }
+.ui-input-group > * { position:relative; border-radius:var(--bs-border-radius); }
+.ui-input-group > :not(:first-child) { margin-inline-start:-1px; border-start-start-radius:0; border-end-start-radius:0; }
+.ui-input-group > :not(:last-child) { border-start-end-radius:0; border-end-end-radius:0; }
+.ui-input-group > :focus-within, .ui-input-group > :focus-visible { z-index:1; }
+.ui-input-group > .ui-select > .ui-select-trigger, .ui-input-group > .ui-input-picker > .ui-input-picker-trigger { border-radius:inherit; }
+.ui-input-group-sm { font-size:var(--ui-control-font-size-sm,var(--text-base)); }
+.ui-input-group-sm > :is(.form-control,.form-select,.ui-input-addon) { font-size:inherit; padding:.25rem .5rem; }
+.ui-input-group-sm > .btn { --bs-btn-font-size:var(--ui-control-font-size-sm,var(--text-base)); --bs-btn-padding-y:.25rem; }
+@media (width < 768px) {
+  .ui-input-group-stack { flex-direction:column; }
+  .ui-input-group.ui-input-group-stack > * { width:100%; max-width:100%; flex-basis:auto; border-radius:0; }
+  .ui-input-group-stack > :not(:first-child) { margin-inline-start:0; margin-block-start:-1px; }
+  .ui-input-group-stack > :first-child { border-start-start-radius:var(--bs-border-radius); border-start-end-radius:var(--bs-border-radius); }
+  .ui-input-group-stack > :last-child { border-end-start-radius:var(--bs-border-radius); border-end-end-radius:var(--bs-border-radius); }
+}
+
+.ui-input-group-sm > .ui-select > .ui-select-trigger, .ui-input-group-sm > .ui-input-picker > .ui-input-picker-trigger { font-size:inherit; padding:.25rem .5rem; }
+
+@media (pointer:coarse) {
+  .ui-input-group-sm { font-size:var(--text-lg); }
+}

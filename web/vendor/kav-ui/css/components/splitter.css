@@ -1,0 +1,29 @@
+/* Resizable panel space excludes handles; omit JS for an equal-width fallback. */
+.ui-splitter { display:flex; width:100%; height:var(--ui-splitter-height,24rem); min-width:0; min-height:0; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius-lg); overflow:hidden; background:var(--ui-theme-surface,var(--bs-body-bg)); -webkit-backdrop-filter:var(--ui-theme-blur,none); backdrop-filter:var(--ui-theme-blur,none); }
+.ui-splitter-panel, .ui-splitter > [data-ui-splitter-panel] { flex:var(--ui-splitter-size,1) 1 0px; min-width:0; min-height:0; overflow:auto; }
+.ui-splitter-panel[data-ui-splitter-collapsed] { overflow:hidden; }
+.ui-splitter-content { padding:var(--space-4); overflow-wrap:anywhere; }
+.ui-splitter-panel > .ui-splitter, .ui-splitter > [data-ui-splitter-panel] > .ui-splitter { height:100%; border:0; border-radius:0; }
+.ui-splitter-handle { display:grid; place-items:center; flex:0 0 var(--ui-splitter-handle-size,12px); align-self:stretch; min-width:0; min-height:0; padding:0; border:0; background:transparent; cursor:col-resize; touch-action:none; user-select:none; }
+/* Keep a generous hit area around the single visible divider. */
+.ui-splitter-handle::after { content:""; width:1px; height:100%; background:var(--bs-border-color); }
+.ui-splitter-handle:is(:hover,[data-ui-dragging])::after { background:var(--bs-primary); }
+.ui-splitter-handle:focus-visible { outline:2px solid var(--bs-primary); outline-offset:-2px; }
+html[data-ui-focus-modality="pointer"] .ui-splitter-handle:focus { outline:0; }
+.ui-splitter-handle[aria-disabled="true"] { cursor:default; opacity:.45; }
+.ui-splitter[data-ui-orientation="vertical"] { flex-direction:column; }
+.ui-splitter[data-ui-orientation="vertical"] > .ui-splitter-handle { cursor:row-resize; }
+.ui-splitter[data-ui-orientation="vertical"] > .ui-splitter-handle::after { width:100%; height:1px; }
+.ui-splitter-sm { --ui-splitter-height:16rem; }
+.ui-splitter-lg { --ui-splitter-height:32rem; }
+html[data-ui-splitter-resizing] { user-select:none; }
+html[data-ui-splitter-resizing="horizontal"], html[data-ui-splitter-resizing="horizontal"] * { cursor:col-resize !important; }
+html[data-ui-splitter-resizing="vertical"], html[data-ui-splitter-resizing="vertical"] * { cursor:row-resize !important; }
+@media (forced-colors:active) { .ui-splitter-handle::after { background:CanvasText; } .ui-splitter-handle:focus-visible { outline-color:Highlight; } }
+@media (pointer:coarse) { .ui-splitter { --ui-splitter-handle-size:24px; } }
+
+@media (width < 768px) {
+  .ui-splitter-mobile-stack { flex-direction:column; }
+  .ui-splitter-mobile-stack > .ui-splitter-handle { cursor:row-resize; }
+  .ui-splitter-mobile-stack > .ui-splitter-handle::after { width:100%; height:1px; }
+}

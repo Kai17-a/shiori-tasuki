@@ -1,0 +1,131 @@
+/* Shared interaction timing. Override on :root or a component subtree. */
+:root {
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 180ms;
+  --motion-duration-slow: 240ms;
+  --motion-duration-spin: 800ms;
+  --motion-duration-loading: 1600ms;
+  --motion-duration-shimmer: 1800ms;
+  --motion-duration-pulse: 2400ms;
+  --motion-ease-out: cubic-bezier(.16,1,.3,1);
+  --motion-ease-in: cubic-bezier(.4,0,1,1);
+  --motion-ease-in-out: cubic-bezier(.4,0,.2,1);
+  --motion-ease-linear: linear;
+}
+/* ============================================================
+   tokens.css  —  §4 対応表の自前定義（Bootstrap 非依存）
+   ============================================================ */
+:root,
+[data-bs-theme="light"] {
+  /* A quieter palette: warm off-white and ink instead of pure black on
+     white, and the accents led down from Bootstrap's brights to muted
+     steel-blue, sage, terracotta, khaki and teal. */
+  --bs-body-bg: #f4f3f0;
+  --bs-body-color: #2b2b2e;
+  --bs-body-font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --bs-font-monospace: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --bs-border-color: #e4e1db;
+  /* Interactive outlines must remain distinct from decorative separators. */
+  --ui-control-outline: #7c7972;
+  --ui-placeholder-color: var(--bs-secondary-color);
+  --bs-border-color-translucent: rgba(0, 0, 0, .12);
+  --bs-border-radius: .3rem;
+  --bs-border-radius-sm: .1875rem;
+  --bs-border-radius-lg: .4rem;
+  --bs-box-shadow-lg: 0 1rem 2.5rem rgba(43, 43, 46, .14);
+  --bs-box-shadow-sm: 0 1px 2px rgba(43, 43, 46, .05);
+
+  /* Low-chroma HCT accents, generated with bundled Material Color Utilities.
+     hue/chroma: primary 255/24, success 155/24, danger 25/28, warning 85/24, info 215/20.
+     Light: fill/on/container/ink/border tones 40/100/95/30/80.
+     Dark: 70/10/20/80/40, keeping filled controls quieter on dark surfaces. */
+  --bs-primary: #4a607c;
+  --ui-on-primary: #ffffff;
+  --bs-primary-text-emphasis: #324863;
+  --bs-primary-rgb: 74, 96, 124;
+  --bs-primary-bg-subtle: #eaf1ff;
+  --bs-primary-border-subtle: #b2c8e8;
+
+  --bs-success: #45664c;
+  --ui-on-success: #ffffff;
+  --bs-success-bg-subtle: #d4fad9;
+  --bs-success-border-subtle: #abd0b0;
+  --bs-success-text-emphasis: #2e4e36;
+
+  --bs-danger: #874f49;
+  --ui-on-danger: #ffffff;
+  --bs-danger-bg-subtle: #ffedea;
+  --bs-danger-border-subtle: #fcb5ac;
+  --bs-danger-text-emphasis: #6b3933;
+
+  --bs-warning: #715b2e;
+  --ui-on-warning: #ffffff;
+  --bs-warning-bg-subtle: #ffefd5;
+  --bs-warning-border-subtle: #e0c38c;
+  --bs-warning-text-emphasis: #574419;
+
+  --bs-info: #43636b;
+  --ui-on-info: #ffffff;
+  --bs-info-bg-subtle: #d6f6ff;
+  --bs-info-border-subtle: #aaccd5;
+  --bs-info-text-emphasis: #2b4b53;
+
+  --bs-secondary-bg: #e7e5df;
+  --bs-secondary-color: rgba(43, 43, 46, .72);
+  --bs-tertiary-bg: #eeece6;
+
+  color-scheme: light;
+}
+[data-bs-theme="dark"] {
+  /* The dark half of the same quiet palette: a soft, faintly blue black
+     rather than a hard one, and accents a touch lighter so they read. */
+  --bs-body-bg: #1b1c1e;
+  --bs-body-color: #c8c9cc;
+
+  --bs-border-color: #383a3e;
+  --ui-control-outline: #898b90;
+  --ui-placeholder-color: var(--bs-secondary-color);
+  --bs-border-color-translucent: rgba(255, 255, 255, .12);
+
+  --bs-primary: #97adcc;
+  --ui-on-primary: #031c35;
+  --bs-primary-text-emphasis: #b2c8e8;
+  --bs-primary-rgb: 151, 173, 204;
+  --bs-primary-bg-subtle: #1b324b;
+  --bs-primary-border-subtle: #4a607c;
+
+  --bs-success: #90b496;
+  --ui-on-success: #01210d;
+  --bs-success-bg-subtle: #173721;
+  --bs-success-border-subtle: #45664c;
+  --bs-success-text-emphasis: #abd0b0;
+
+  --bs-danger: #de9a92;
+  --ui-on-danger: #360f0b;
+  --bs-danger-bg-subtle: #50231e;
+  --bs-danger-border-subtle: #874f49;
+  --bs-danger-text-emphasis: #fcb5ac;
+
+  --bs-warning: #c3a873;
+  --ui-on-warning: #261900;
+  --bs-warning-bg-subtle: #3f2e04;
+  --bs-warning-border-subtle: #715b2e;
+  --bs-warning-text-emphasis: #e0c38c;
+
+  --bs-info: #8fb1ba;
+  --ui-on-info: #001f25;
+  --bs-info-bg-subtle: #12353c;
+  --bs-info-border-subtle: #43636b;
+  --bs-info-text-emphasis: #aaccd5;
+
+  --bs-secondary-bg: #2a2c30;
+  --bs-secondary-color: rgba(200, 201, 204, .68);
+  --bs-tertiary-bg: #222426;
+
+  color-scheme: dark;
+}
+
+/* ============================================================
+   components.css  —  §5 主要コンポーネントの自前実装
+   ============================================================ */

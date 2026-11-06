@@ -1,0 +1,53 @@
+/* --- form controls --- */
+.form-control, .form-select { display: block; width: 100%; min-width:0; max-width:100%; padding: .375rem .75rem; font-size:var(--ui-control-font-size,var(--text-base)); font-weight: 400;
+  line-height: 1.5; color: var(--bs-body-color); background-color: var(--bs-body-bg);
+  border: 1px solid var(--ui-control-outline,var(--bs-border-color)); border-radius: var(--bs-border-radius);
+  transition: border-color var(--motion-duration-base) var(--motion-ease-in-out), box-shadow var(--motion-duration-base) var(--motion-ease-in-out); }
+.form-control:focus-visible, .form-select:focus-visible { border-color:var(--bs-primary); outline:2px solid var(--bs-primary); outline-offset:3px; }
+:is(.form-control, .ui-command-input)::placeholder { color:var(--ui-placeholder-color,var(--bs-secondary-color)); opacity:1; }
+.form-control-sm, .form-select-sm { padding: .25rem .5rem; font-size:var(--ui-control-font-size-sm,var(--text-sm)); border-radius: var(--bs-border-radius-sm); }
+textarea.form-control { resize: vertical; }
+
+/* select arrow (data: SVG, like Bootstrap) */
+.form-select { appearance: none; padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23343a40' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat; background-position: right .75rem center; background-size: 16px 12px; }
+[data-bs-theme="dark"] .form-select { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23adb5bd' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e"); }
+
+.form-control:disabled, .form-select:disabled { opacity:.55; cursor:not-allowed; }
+.form-control[readonly] { background-color:var(--bs-tertiary-bg); }
+
+/* Native values and keyboard behavior, with framework-owned surfaces and thumbs. */
+.form-range, input[type="range"].form-control {
+  appearance:none; -webkit-appearance:none; display:block; width:100%; height:1.5rem;
+  padding:0; margin:0; background:transparent; border:0; box-shadow:none; cursor:pointer; accent-color:var(--bs-primary);
+}
+.form-range::-webkit-slider-runnable-track, input[type="range"].form-control::-webkit-slider-runnable-track {
+  height:.4rem; background:var(--bs-border-color); border-radius:1rem;
+}
+.form-range::-moz-range-track, input[type="range"].form-control::-moz-range-track {
+  height:.4rem; background:var(--bs-border-color); border-radius:1rem;
+}
+.form-range::-webkit-slider-thumb, input[type="range"].form-control::-webkit-slider-thumb {
+  appearance:none; -webkit-appearance:none; width:1.1rem; height:1.1rem; margin-top:-.35rem;
+  border:2px solid var(--bs-body-bg); border-radius:50%; background:var(--bs-primary); box-shadow:0 0 0 1px var(--bs-primary);
+}
+.form-range::-moz-range-thumb, input[type="range"].form-control::-moz-range-thumb {
+  width:.85rem; height:.85rem; border:2px solid var(--bs-body-bg); border-radius:50%; background:var(--bs-primary); box-shadow:0 0 0 1px var(--bs-primary);
+}
+.form-range:focus-visible, input[type="range"].form-control:focus-visible { outline:2px solid var(--bs-primary); outline-offset:3px; border-radius:1rem; }
+.form-range:disabled { opacity:.55; cursor:not-allowed; }
+input[type="color"].form-control { width:4rem; height:2.5rem; padding:.25rem; cursor:pointer; }
+input[type="color"].form-control::-webkit-color-swatch-wrapper { padding:0; }
+input[type="color"].form-control::-webkit-color-swatch { border:0; border-radius:var(--bs-border-radius-sm); }
+input[type="color"].form-control::-moz-color-swatch { border:0; border-radius:var(--bs-border-radius-sm); }
+input[type="file"].form-control { overflow:hidden; }
+input[type="file"].form-control::file-selector-button {
+  font:inherit; color:var(--bs-body-color); background:var(--bs-tertiary-bg); cursor:pointer;
+  border:0; border-inline-end:1px solid var(--bs-border-color); margin:-.375rem .75rem -.375rem -.75rem; padding:.375rem .75rem;
+}
+input[type="file"].form-control-sm::file-selector-button { margin:-.25rem .5rem -.25rem -.5rem; padding:.25rem .5rem; }
+input[type="file"].form-control::file-selector-button:hover { background:var(--bs-secondary-bg); }
+@media (forced-colors:active) {
+  .form-range, input[type="range"].form-control { appearance:auto; }
+}

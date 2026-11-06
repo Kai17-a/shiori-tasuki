@@ -1,0 +1,20 @@
+/* SVG charts use inherited theme colors and need no external chart library. */
+.ui-chart { --ui-chart-color-1:var(--bs-primary); --ui-chart-color-2:var(--bs-success); --ui-chart-color-3:var(--bs-warning); --ui-chart-color-4:var(--bs-info); --ui-chart-color-5:var(--bs-danger); --ui-chart-color-6:var(--bs-secondary-color); margin:0; min-width:0; }
+.ui-chart > figcaption { font-weight:600; margin-bottom:var(--space-3); }
+.ui-chart-output { min-width:0; }
+.ui-chart-svg { display:block; width:100%; height:auto; overflow:visible; }
+.ui-chart-svg text { font-family:var(--bs-body-font-family); font-size:12px; fill:var(--bs-secondary-color); }
+.ui-chart-svg .ui-chart-total { font-size:26px; font-weight:600; fill:var(--bs-body-color); }
+.ui-chart-grid { stroke:var(--bs-border-color); stroke-dasharray:3 4; }
+.ui-chart-axis { stroke:var(--bs-secondary-color); stroke-width:1; }
+.ui-chart-legend { display:flex; flex-wrap:wrap; gap:var(--space-2) var(--space-4); list-style:none; padding:0; margin:var(--space-3) 0; font-size:var(--text-sm); }
+.ui-chart-legend li { display:flex; align-items:center; gap:var(--space-2); min-width:0; overflow-wrap:anywhere; }
+.ui-chart-swatch { flex:none; width:10px; height:10px; border-radius:2px; }
+.ui-chart-data { margin-top:var(--space-3); font-size:var(--text-sm); }
+.ui-chart-data summary { color:var(--bs-secondary-color); cursor:pointer; width:fit-content; }
+.ui-chart-data table { margin-top:var(--space-3); font-variant-numeric:tabular-nums; }
+.ui-chart-data caption { text-align:start; color:var(--bs-secondary-color); padding-block:var(--space-2); }
+.ui-chart-message { min-height:12rem; display:grid; place-items:center; text-align:center; color:var(--bs-secondary-color); background:var(--bs-tertiary-bg); border:1px dashed var(--bs-border-color); border-radius:var(--bs-border-radius); padding:var(--space-4); }
+@media (forced-colors:active) { .ui-chart-svg { forced-color-adjust:none; } }
+
+.ui-chart-data td { white-space:nowrap; }

@@ -1,0 +1,17 @@
+/* Chronological content. List semantics and dates stay in authored HTML. */
+.ui-timeline { --ui-timeline-marker-size:2rem; list-style:none; margin:0; padding:0; }
+.ui-timeline-item { position:relative; display:grid; grid-template-columns:var(--ui-timeline-marker-size) minmax(0,1fr); column-gap:var(--space-3); padding-bottom:var(--space-6); min-width:0; }
+.ui-timeline-item:not(:last-child)::before { content:""; position:absolute; inset-inline-start:calc((var(--ui-timeline-marker-size) - 1px) / 2); inset-block-start:var(--ui-timeline-marker-size); bottom:0; width:1px; background:var(--bs-border-color); }
+.ui-timeline-item:last-child { padding-bottom:0; }
+.ui-timeline-marker { display:grid; place-items:center; align-self:start; width:var(--ui-timeline-marker-size); height:var(--ui-timeline-marker-size); border:1px solid var(--bs-border-color); border-radius:50%; background:var(--ui-theme-surface,var(--bs-body-bg)); color:var(--bs-secondary-color); --ui-icon-size:1rem; }
+.ui-timeline-marker:empty::before { content:""; width:6px; height:6px; border-radius:50%; background:currentColor; }
+.ui-timeline-item:is(.is-complete,[aria-current="step"]) > .ui-timeline-marker { border-color:var(--bs-primary-border-subtle); background:var(--bs-primary-bg-subtle); color:var(--bs-primary-text-emphasis,var(--bs-primary)); }
+.ui-timeline-item[aria-current="step"] > .ui-timeline-marker { outline:2px solid var(--bs-primary); outline-offset:2px; }
+.ui-timeline-content { min-width:0; padding-top:var(--space-1); overflow-wrap:anywhere; }
+.ui-timeline-title { margin:0 0 var(--space-1); font-size:.875rem; font-weight:600; line-height:1.5; }
+.ui-timeline-content > p { margin:var(--space-1) 0 0; }
+.ui-timeline-date { display:block; margin-bottom:var(--space-1); color:var(--bs-secondary-color); font-size:.8125rem; }
+.ui-timeline-compact { --ui-timeline-marker-size:.75rem; }
+.ui-timeline-compact .ui-timeline-content { padding-top:0; }
+.ui-timeline-compact .ui-timeline-item { padding-bottom:var(--space-4); }
+.ui-timeline-compact .ui-timeline-item:last-child { padding-bottom:0; }

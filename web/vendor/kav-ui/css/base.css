@@ -1,0 +1,58 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  line-height: var(--leading-normal);
+  font-family: var(--bs-body-font-family);
+  font-size: var(--text-base);
+  background: var(--bs-body-bg);
+  color: var(--bs-body-color);
+}
+/* HTML typography defaults. Zero specificity lets component classes and
+   application styles override these without !important or extra selectors. */
+:where(h1, h2, h3, h4, h5, h6) {
+  margin:0 0 var(--space-3);
+  text-wrap:balance;
+  font-family:inherit;
+  font-weight:600;
+  line-height:var(--leading-tight);
+  color:inherit;
+  overflow-wrap:anywhere;
+}
+:where(h1) { font-size:var(--text-2xl); letter-spacing:var(--tracking-tight); }
+:where(h2) { font-size:var(--text-xl); }
+:where(h3) { font-size:var(--text-lg); }
+:where(h4) { font-size:var(--text-base); }
+:where(h5) { font-size:var(--text-sm); }
+:where(h6) { font-size:var(--text-xs); }
+:where(p) { margin:0 0 var(--space-3); overflow-wrap:anywhere; }
+:where(a) { color:var(--ui-link-color,var(--bs-primary)); text-underline-offset:.15em; }
+:where(strong, b) { font-weight:600; }
+:where(em, i, cite) { font-style:italic; }
+:where(small) { font-size:var(--text-sm); }
+:where(mark) { color:var(--bs-warning-text-emphasis); background:var(--bs-warning-bg-subtle); padding:.1em .2em; border-radius:var(--bs-border-radius-sm); }
+:where(s, del) { text-decoration-line:line-through; }
+:where(u, ins) { text-decoration-line:underline; text-underline-offset:.15em; }
+:where(abbr[title]) { text-decoration:underline dotted; text-underline-offset:.15em; cursor:help; }
+:where(ul, ol) { margin:0 0 var(--space-3); padding-inline-start:var(--space-6); }
+:where(ul) { list-style-type:disc; }
+:where(ol) { list-style-type:decimal; }
+:where(li > ul, li > ol) { margin-block:var(--space-1) 0; }
+:where(dl) { margin:0 0 var(--space-3); }
+:where(dt) { font-weight:600; }
+:where(dd) { margin:var(--space-1) 0 var(--space-3) var(--space-4); }
+:where(blockquote) { margin:0 0 var(--space-4); padding:var(--space-2) var(--space-4); border-inline-start:2px solid var(--bs-border-color); color:var(--bs-secondary-color); }
+:where(blockquote > :last-child) { margin-bottom:0; }
+:where(code, kbd, samp, pre) { font-family:var(--bs-font-monospace); font-size:.875em; }
+:where(code, samp) { overflow-wrap:anywhere; }
+:where(code):not(:where(pre code)) { padding:.1em .3em; border-radius:var(--bs-border-radius-sm); background:var(--bs-tertiary-bg); }
+:where(kbd) { padding:.1em .35em; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius-sm); background:var(--bs-tertiary-bg); color:var(--bs-body-color); }
+:where(pre) { max-width:100%; margin:0 0 var(--space-4); padding:var(--space-4); overflow:auto; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius); background:var(--bs-tertiary-bg); line-height:var(--leading-normal); }
+:where(pre code, pre samp) { font:inherit; padding:0; background:none; }
+:where(hr) { margin:var(--space-4) 0; border:0; border-block-start:1px solid var(--bs-border-color); color:inherit; }
+:where(button, input, select, textarea) { font:inherit; }
+.row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .5rem 0; }
+
+/* Replaced media stays inside its parent without requiring a utility class. */
+:where(img, video, canvas, svg) { max-width:100%; }
+:where(img, video, canvas) { height:auto; }

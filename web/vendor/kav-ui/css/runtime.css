@@ -1,0 +1,70 @@
+/* Shared behavior states; no catalog-specific layout. */
+[hidden] { display:none !important; }
+:focus-visible { outline:2px solid var(--bs-primary); outline-offset:3px; }
+.ui-invalid-feedback { display:block; color:var(--bs-danger-text-emphasis); font-size:var(--text-xs); }
+[data-ui-field] > [data-ui-error] { grid-column:1 / -1; }
+.ui-tooltip { position:fixed; z-index:1200; top:0; left:0; width:max-content; max-width:min(20rem,calc(100vw - 16px)); padding:var(--space-2) var(--space-3); border-radius:var(--bs-border-radius); background:var(--bs-body-color); color:var(--bs-body-bg); box-shadow:var(--bs-box-shadow-sm); font:var(--text-xs)/var(--leading-normal) var(--bs-body-font-family); overflow-wrap:anywhere; }
+.ui-dialog { width:min(34em,92vw); min-width:0; }
+@media (width < 768px) { .ui-dialog form { grid-template-columns:1fr; } }
+.field [data-ui-error] { color:var(--bs-danger-text-emphasis); }
+.ui-dialog form > .field { grid-column:1 / -1; }
+
+/* Entrance feedback is automatic; no opt-in attributes or classes are needed. */
+.ui-dialog[open],
+.ui-toast:not([hidden]),
+.ui-tooltip,
+.ui-datepicker-popup:not([hidden]),
+.alert:not([hidden]), .ui-banner:not([hidden]),
+.ui-reveal:not([hidden]),
+[data-ui-panel]:not([hidden]),
+.accordion details[open] > :not(summary),
+.tip-disclosure[open] > :not(summary) {
+  animation:ui-appear var(--motion-duration-base) var(--motion-ease-out);
+}
+.ui-dialog[open]::backdrop { animation:ui-backdrop-appear var(--motion-duration-base) var(--motion-ease-out); }
+@keyframes ui-appear { from { opacity:0; } to { opacity:1; } }
+@keyframes ui-backdrop-appear { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion:reduce) {
+  .ui-dialog[open], .ui-toast:not([hidden]), .ui-tooltip,
+  .ui-datepicker-popup:not([hidden]), .alert:not([hidden]), .ui-banner:not([hidden]),
+  .ui-reveal:not([hidden]), [data-ui-panel]:not([hidden]),
+  .accordion details[open] > :not(summary), .tip-disclosure[open] > :not(summary),
+  .ui-dialog[open]::backdrop { animation:none; }
+}
+
+/* Pointer interaction clears action-control rings, including keyboard-to-pointer switches.
+   Editable text fields keep their editing indicator. Focus itself is never removed. */
+html[data-ui-focus-modality="pointer"] :is(button, a[href], summary, select, [role="button"], input[type="checkbox"], input[type="radio"], input[type="range"], input[type="button"], input[type="submit"], input[type="reset"], input[type="image"]):focus { outline:0; }
+html[data-ui-focus-modality="pointer"] .btn:focus:not(:active) { box-shadow:var(--ui-pointer-button-shadow,none); }
+html[data-ui-focus-modality="pointer"] :is(button.form-control, .form-select, .form-check-input):focus { box-shadow:none; }
+html[data-ui-focus-modality="pointer"] :is(button.form-control, .form-select):focus:not([aria-invalid="true"]) { border-color:var(--ui-control-outline,var(--bs-border-color)); }
+
+/* Preserve keyboard position when forced colors suppress shadows. */
+@media (forced-colors:active) {
+  :is(.btn, .form-control, .form-select):focus-visible { outline:2px solid Highlight; outline-offset:3px; }
+}
+
+/* Dense desktop controls retain their visual size; touch gets a shared hit area.
+   Seven-column calendars grow vertically so narrow months still fit the viewport. */
+@media (pointer:coarse) {
+  .ui-data-table-sort, .table td a[href], .ui-header-nav a, .ui-footer-inner a {
+    display:inline-flex; align-items:center; min-width:var(--ui-touch-target); min-height:var(--ui-touch-target);
+  }
+  details.ui-chart-data > summary { min-width:var(--ui-touch-target); min-height:var(--ui-touch-target); align-content:center; }
+  .btn, .ui-calendar-actions .btn { min-width:var(--ui-touch-target); min-height:var(--ui-touch-target); }
+  .btn-close { box-sizing:border-box; min-width:var(--ui-touch-target); min-height:var(--ui-touch-target); }
+  .form-check, .ui-rating-choice { min-height:var(--ui-touch-target); }
+  .ui-rating-choice { min-width:var(--ui-touch-target); }
+  :is(.form-control, .form-select):not(.ui-picker-native, .form-range, [type="range"], [type="color"]) {
+    min-height:var(--ui-touch-target);
+    /* Avoid automatic zoom of editable fields on mobile browsers. */
+    font-size:var(--text-lg);
+  }
+  .ui-select-trigger, .ui-input-picker-trigger { min-height:var(--ui-touch-target); }
+  :is(.ui-calendar-compact, .ui-datepicker-popup, .ui-input-popup) .ui-calendar-day { min-height:var(--ui-touch-target); }
+}
+
+/* Summary is a native action regardless of the disclosure component. */
+@media (pointer:coarse) {
+  summary { min-width:var(--ui-touch-target); min-height:var(--ui-touch-target); align-content:center; }
+}

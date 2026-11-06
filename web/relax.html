@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ja" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>背景を眺める · task-tool</title>
+  <script src="vendor/kav-ui/js/theme-init.js"></script>
+  <link rel="stylesheet" href="vendor/kav-ui/css/ui.css">
+  <style>
+    /* A quiet page for looking at the dashboard's background image: the picture, nothing else,
+       and a few controls that fade away while the mouse rests. */
+    html, body { height: 100%; }
+    body.relax {
+      margin: 0;
+      overflow: hidden;
+      background: #0b0b0d;
+      color: #f4f4f5;
+      /* The page handles pinch and drag itself, so the browser must not zoom or scroll it. */
+      touch-action: none;
+    }
+    /* The same picture, blurred and dimmed, fills the space the fitted image leaves. */
+    .relax-backdrop {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: blur(40px) brightness(0.55) saturate(1.1);
+      transform: scale(1.1);
+    }
+    /* The script sets the size and position; the picture can be larger than the window. */
+    .relax-image {
+      position: fixed;
+      top: 0;
+      left: 0;
+      max-width: none;
+      transition: opacity 600ms ease;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .relax-image.is-animating {
+      transition: opacity 600ms ease, transform 200ms ease, width 200ms ease, height 200ms ease;
+    }
+    .relax-image:not([src]),
+    .relax-backdrop:not([src]) { visibility: hidden; }
+    .relax-image.is-loading { opacity: 0; }
+    /* The hand cursor appears only when part of the picture is outside the window. */
+    .relax.is-pannable .relax-image { cursor: grab; }
+    .relax.is-dragging,
+    .relax.is-dragging .relax-image { cursor: grabbing; }
+
+    .relax-controls {
+      position: fixed;
+      inset-inline: 0;
+      bottom: max(1.5rem, env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: center;
+      padding-inline: 1rem;
+      transition: opacity 400ms ease, translate 400ms ease;
+    }
+    .relax-controls > div {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 999px;
+      background: rgba(20, 20, 24, 0.55);
+      -webkit-backdrop-filter: blur(16px) saturate(140%);
+      backdrop-filter: blur(16px) saturate(140%);
+    }
+    .relax-controls .btn {
+      border-radius: 999px;
+      color: #f4f4f5;
+      border-color: rgba(255, 255, 255, 0.28);
+    }
+    .relax-controls .btn:hover,
+    .relax-controls .btn:focus-visible { background: rgba(255, 255, 255, 0.14); color: #fff; }
+    .relax-controls .btn:disabled { opacity: 0.4; }
+    /* − 100% + read as one control. */
+    .relax-zoom { display: inline-flex; gap: 0.25rem; }
+    .relax-zoom .btn { min-width: 2.25rem; font-variant-numeric: tabular-nums; }
+    .relax-zoom [data-action="zoom-reset"] { min-width: 4.25rem; }
+    /* While the mouse rests the page is only the picture. Keyboard focus brings the controls back. */
+    .relax.is-idle,
+    .relax.is-idle .relax-image { cursor: none; }
+    .relax.is-idle .relax-controls:not(:focus-within) {
+      opacity: 0;
+      translate: 0 0.75rem;
+      pointer-events: none;
+    }
+
+    .relax-empty {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 1rem;
+      text-align: center;
+    }
+    .relax-empty[hidden] { display: none; }
+    .relax-empty p { margin: 0 0 1rem; color: #d4d4d8; }
+    .relax-empty .btn { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .relax-image, .relax-image.is-animating, .relax-controls { transition: none; }
+    }
+  </style>
+</head>
+<body class="relax">
+  <img class="relax-backdrop" alt="" aria-hidden="true">
+  <img class="relax-image is-loading" alt="ダッシュボードの背景画像" draggable="false">
+
+  <div class="relax-empty" hidden>
+    <div>
+      <p>背景画像はまだ設定されていません。</p>
+      <a class="btn btn-outline-secondary" href="/#/settings">設定で画像を選ぶ</a>
+    </div>
+  </div>
+
+  <nav class="relax-controls" aria-label="表示の操作">
+    <div>
+      <a class="btn btn-outline-secondary btn-sm" href="/#/overview">ダッシュボードへ戻る</a>
+      <span class="relax-zoom" role="group" aria-label="拡大と縮小">
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-action="zoom-out" aria-label="縮小" title="縮小（- キー）" disabled>−</button>
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-action="zoom-reset" title="最初の表示に戻す（0 キー）" disabled>100%</button>
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-action="zoom-in" aria-label="拡大" title="拡大（+ キー）" disabled>+</button>
+      </span>
+      <button class="btn btn-outline-secondary btn-sm" type="button" data-action="fit" aria-pressed="false" title="Z キー">画面いっぱい</button>
+      <button class="btn btn-outline-secondary btn-sm" type="button" data-action="fullscreen" title="F キー">全画面</button>
+    </div>
+  </nav>
+
+  <script>
+    (() => {
+      'use strict';
+      /** How long the mouse rests before the controls and the cursor fade away. */
+      const IDLE_MS = 2500;
+      const FIT_KEY = 'task-tool-relax-fill';
+      /** One click of − or + changes the size by this factor. */
+      const ZOOM_STEP = 1.25;
+      /** The picture can grow to this many times the size that shows all of it. */
+      const MAX_ZOOM = 8;
+      /** Arrow keys move the picture by this share of the window. */
+      const PAN_STEP = 0.15;
+      /** Two taps or clicks closer than this, in time and distance, count as a double tap. */
+      const DOUBLE_TAP_MS = 300;
+      const TAP_SLOP_PX = 8;
+
+      const body = document.body;
+      const image = document.querySelector('.relax-image');
+      const backdrop = document.querySelector('.relax-backdrop');
+      const fitButton = document.querySelector('[data-action="fit"]');
+      const fullscreenButton = document.querySelector('[data-action="fullscreen"]');
+      const zoomOutButton = document.querySelector('[data-action="zoom-out"]');
+      const zoomResetButton = document.querySelector('[data-action="zoom-reset"]');
+      const zoomInButton = document.querySelector('[data-action="zoom-in"]');
+
+      // Storage is optional: a private window or blocked site data still shows the picture.
+      const remember = (key, value) => { try { localStorage.setItem(key, value); } catch { /* ignore */ } };
+      const recall = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+      // View state. `zoom` is relative to the starting view (whole picture, or filling the
+      // window), so resizing the window keeps the same framing. The offsets move the picture's
+      // centre away from the window's centre, in screen pixels.
+      let natural = null;
+      let fill = recall(FIT_KEY) === '1';
+      let zoom = 1;
+      let offsetX = 0;
+      let offsetY = 0;
+
+      const viewport = () => ({ w: window.innerWidth, h: window.innerHeight });
+      function fitScales() {
+        const { w, h } = viewport();
+        const sx = w / natural.w;
+        const sy = h / natural.h;
+        return { contain: Math.min(sx, sy), cover: Math.max(sx, sy) };
+      }
+      const baseScale = () => (fill ? fitScales().cover : fitScales().contain);
+      const currentScale = () => baseScale() * zoom;
+      /** The smallest size shows the whole picture; the largest allows at least its real pixels. */
+      function scaleLimits() {
+        const { contain } = fitScales();
+        return { min: contain, max: Math.max(contain * MAX_ZOOM, 1) };
+      }
+
+      /** How far the picture may move on each axis. Zero means it fits and stays centred. */
+      function panRange(scale = currentScale()) {
+        const { w, h } = viewport();
+        return {
+          x: Math.max(0, (natural.w * scale - w) / 2),
+          y: Math.max(0, (natural.h * scale - h) / 2),
+        };
+      }
+      const isPannable = () => {
+        const range = panRange();
+        return range.x > 0.5 || range.y > 0.5;
+      };
+
+      function render() {
+        if (!natural) return;
+        const scale = currentScale();
+        const range = panRange(scale);
+        offsetX = clamp(offsetX, -range.x, range.x);
+        offsetY = clamp(offsetY, -range.y, range.y);
+        const { w, h } = viewport();
+        const width = natural.w * scale;
+        const height = natural.h * scale;
+        image.style.width = `${width}px`;
+        image.style.height = `${height}px`;
+        image.style.transform = `translate3d(${(w - width) / 2 + offsetX}px, ${(h - height) / 2 + offsetY}px, 0)`;
+        body.classList.toggle('is-pannable', range.x > 0.5 || range.y > 0.5);
+
+        // The label is the size against the image file's own pixels, as in photo viewers.
+        const { min, max } = scaleLimits();
+        zoomResetButton.textContent = `${Math.round(scale * 100)}%`;
+        zoomOutButton.disabled = scale <= min * 1.001;
+        zoomInButton.disabled = scale >= max * 0.999;
+        zoomResetButton.disabled = isAtStart();
+      }
+
+      const isAtStart = () => Math.abs(zoom - 1) < 0.001 && Math.abs(offsetX) < 0.5 && Math.abs(offsetY) < 0.5;
+
+      let animationTimer;
+      function animateNextChange() {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        image.classList.add('is-animating');
+        clearTimeout(animationTimer);
+        animationTimer = setTimeout(() => image.classList.remove('is-animating'), 220);
+      }
+      function stopAnimation() {
+        clearTimeout(animationTimer);
+        image.classList.remove('is-animating');
+      }
+
+      /** Changes the size so that the spot under `point` (screen pixels) stays where it is. */
+      function zoomTo(scale, point, animate = false) {
+        if (!natural) return;
+        const { min, max } = scaleLimits();
+        const next = clamp(scale, min, max);
+        const { w, h } = viewport();
+        const px = (point ? point.x : w / 2) - w / 2;
+        const py = (point ? point.y : h / 2) - h / 2;
+        const ratio = next / currentScale();
+        offsetX = px - (px - offsetX) * ratio;
+        offsetY = py - (py - offsetY) * ratio;
+        zoom = next / baseScale();
+        if (animate) animateNextChange();
+        render();
+      }
+
+      function resetView(animate = true) {
+        zoom = 1;
+        offsetX = 0;
+        offsetY = 0;
+        if (animate) animateNextChange();
+        render();
+      }
+
+      /** Double tap: zoom in at that spot, or go back to the starting view. */
+      function toggleZoomAt(point) {
+        if (!isAtStart()) return resetView();
+        const base = baseScale();
+        // A large image goes to its real pixels; a small one doubles and a half.
+        zoomTo(1 > base * 1.2 ? 1 : base * 2.5, point, true);
+      }
+
+      function panBy(dx, dy) {
+        if (!isPannable()) return false;
+        offsetX += dx;
+        offsetY += dy;
+        animateNextChange();
+        render();
+        return true;
+      }
+
+      function setFill(next, animate = true) {
+        fill = next;
+        body.classList.toggle('is-fill', fill);
+        fitButton.setAttribute('aria-pressed', String(fill));
+        fitButton.textContent = fill ? '全体を表示' : '画面いっぱい';
+        remember(FIT_KEY, fill ? '1' : '0');
+        resetView(animate);
+      }
+      setFill(fill, false);
+      fitButton.addEventListener('click', () => setFill(!fill));
+      zoomInButton.addEventListener('click', () => zoomTo(currentScale() * ZOOM_STEP, null, true));
+      zoomOutButton.addEventListener('click', () => zoomTo(currentScale() / ZOOM_STEP, null, true));
+      zoomResetButton.addEventListener('click', () => resetView());
+      window.addEventListener('resize', () => render());
+
+      function toggleFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen?.();
+        else document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+      if (!document.documentElement.requestFullscreen) fullscreenButton.hidden = true;
+      fullscreenButton.addEventListener('click', toggleFullscreen);
+      document.addEventListener('fullscreenchange', () => {
+        fullscreenButton.textContent = document.fullscreenElement ? '全画面を終了' : '全画面';
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        const { w, h } = viewport();
+        switch (event.key) {
+          case 'f': case 'F': toggleFullscreen(); break;
+          case 'z': case 'Z': setFill(!fill); break;
+          case '+': case '=': case ';': zoomTo(currentScale() * ZOOM_STEP, null, true); break;
+          case '-': case '_': zoomTo(currentScale() / ZOOM_STEP, null, true); break;
+          case '0': resetView(); break;
+          // Arrow keys show more of that side, and only when the picture is larger than the window.
+          case 'ArrowLeft': if (!panBy(w * PAN_STEP, 0)) return; break;
+          case 'ArrowRight': if (!panBy(-w * PAN_STEP, 0)) return; break;
+          case 'ArrowUp': if (!panBy(0, h * PAN_STEP)) return; break;
+          case 'ArrowDown': if (!panBy(0, -h * PAN_STEP)) return; break;
+          default: return;
+        }
+        event.preventDefault();
+      });
+
+      // Mouse wheel and trackpad pinch (which arrives as a wheel event with ctrlKey) zoom at the pointer.
+      document.addEventListener('wheel', (event) => {
+        if (!natural || event.target.closest('.relax-controls')) return;
+        event.preventDefault();
+        const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport().h : 1;
+        const speed = event.ctrlKey ? 0.01 : 0.002;
+        const factor = Math.exp(-event.deltaY * unit * speed);
+        stopAnimation();
+        zoomTo(currentScale() * factor, { x: event.clientX, y: event.clientY });
+      }, { passive: false });
+
+      // Dragging moves the picture when it is larger than the window; two fingers pinch to zoom.
+      const pointers = new Map();
+      let gesture = null;
+      let lastTap = null;
+      let tapStart = null;
+
+      function beginGesture() {
+        const points = [...pointers.values()];
+        if (points.length === 1) {
+          gesture = { type: 'pan', x: points[0].x, y: points[0].y, offsetX, offsetY };
+          body.classList.toggle('is-dragging', isPannable());
+        } else if (points.length >= 2) {
+          const [a, b] = points;
+          gesture = {
+            type: 'pinch',
+            distance: Math.hypot(b.x - a.x, b.y - a.y) || 1,
+            mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+            scale: currentScale(),
+            offsetX,
+            offsetY,
+          };
+        }
+      }
+
+      document.addEventListener('pointerdown', (event) => {
+        if (!natural || event.target.closest('.relax-controls, .relax-empty')) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        body.setPointerCapture?.(event.pointerId);
+        stopAnimation();
+        tapStart = pointers.size === 1 ? { x: event.clientX, y: event.clientY, time: event.timeStamp } : null;
+        beginGesture();
+      });
+
+      document.addEventListener('pointermove', (event) => {
+        if (!pointers.has(event.pointerId) || !gesture) return;
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (gesture.type === 'pan') {
+          offsetX = gesture.offsetX + (event.clientX - gesture.x);
+          offsetY = gesture.offsetY + (event.clientY - gesture.y);
+          render();
+          return;
+        }
+        const [a, b] = [...pointers.values()];
+        const { w, h } = viewport();
+        const { min, max } = scaleLimits();
+        const next = clamp(gesture.scale * Math.hypot(b.x - a.x, b.y - a.y) / gesture.distance, min, max);
+        const ratio = next / gesture.scale;
+        // Keep the spot under the fingers' starting midpoint under their current midpoint.
+        const m0 = { x: gesture.mid.x - w / 2, y: gesture.mid.y - h / 2 };
+        const m1 = { x: (a.x + b.x) / 2 - w / 2, y: (a.y + b.y) / 2 - h / 2 };
+        offsetX = m1.x - (m0.x - gesture.offsetX) * ratio;
+        offsetY = m1.y - (m0.y - gesture.offsetY) * ratio;
+        zoom = next / baseScale();
+        render();
+      });
+
+      function endPointer(event) {
+        if (!pointers.has(event.pointerId)) return;
+        pointers.delete(event.pointerId);
+        const wasTap = event.type === 'pointerup' && tapStart && pointers.size === 0
+          && Math.hypot(event.clientX - tapStart.x, event.clientY - tapStart.y) < TAP_SLOP_PX
+          && event.timeStamp - tapStart.time < DOUBLE_TAP_MS;
+        tapStart = null;
+        if (pointers.size > 0) {
+          beginGesture();
+          return;
+        }
+        gesture = null;
+        body.classList.remove('is-dragging');
+        if (!wasTap) {
+          lastTap = null;
+          return;
+        }
+        const tap = { x: event.clientX, y: event.clientY, time: event.timeStamp };
+        if (lastTap && tap.time - lastTap.time < DOUBLE_TAP_MS
+          && Math.hypot(tap.x - lastTap.x, tap.y - lastTap.y) < TAP_SLOP_PX * 3) {
+          lastTap = null;
+          toggleZoomAt(tap);
+        } else {
+          lastTap = tap;
+        }
+      }
+      document.addEventListener('pointerup', endPointer);
+      document.addEventListener('pointercancel', endPointer);
+
+      let idleTimer;
+      function wake() {
+        body.classList.remove('is-idle');
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => body.classList.add('is-idle'), IDLE_MS);
+      }
+      for (const type of ['pointermove', 'pointerdown', 'keydown', 'touchstart', 'wheel']) {
+        document.addEventListener(type, wake, { passive: true });
+      }
+      wake();
+
+      fetch('/api/settings')
+        .then((response) => (response.ok ? response.json() : Promise.reject(new Error(response.statusText))))
+        .then((settings) => {
+          const url = settings.background?.image?.url;
+          if (!url) {
+            document.querySelector('.relax-empty').hidden = false;
+            document.querySelector('.relax-controls').hidden = true;
+            return;
+          }
+          image.addEventListener('load', () => {
+            natural = { w: image.naturalWidth || 1, h: image.naturalHeight || 1 };
+            resetView(false);
+            image.classList.remove('is-loading');
+          }, { once: true });
+          image.src = url;
+          backdrop.src = url;
+        })
+        .catch(() => {
+          const empty = document.querySelector('.relax-empty');
+          empty.querySelector('p').textContent = '背景画像を読み込めませんでした。task-tool serve が動いているか確かめてください。';
+          empty.hidden = false;
+        });
+    })();
+  </script>
+</body>
+</html>
