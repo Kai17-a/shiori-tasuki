@@ -14,7 +14,6 @@
 .ui-drawer-body { flex:1; min-height:0; padding:var(--space-4); overflow:auto; overscroll-behavior:contain; }
 .ui-drawer-footer { justify-content:flex-end; border-top:1px solid var(--bs-border-color); }
 .ui-dialog.ui-drawer form { grid-template-columns:minmax(0,1fr); }
-html:has(.ui-drawer[open]) { overflow:hidden; scrollbar-gutter:stable; }
 @keyframes ui-drawer-enter { from { opacity:0; translate:var(--ui-drawer-x) var(--ui-drawer-y); } to { opacity:1; translate:0 0; } }
 @media (prefers-reduced-motion:reduce) { .ui-dialog.ui-drawer[open] { animation:none; } }
 

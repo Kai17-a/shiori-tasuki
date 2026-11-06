@@ -6,9 +6,10 @@ body[data-ui-theme="glass"] {
   --bs-border-radius-lg:.9rem;
   --bs-box-shadow-sm:0 3px 14px color-mix(in srgb, var(--bs-body-color) 7%, transparent);
   --bs-box-shadow-lg:0 18px 48px color-mix(in srgb, var(--bs-body-color) 16%, transparent);
-  --ui-theme-surface:color-mix(in srgb, var(--bs-body-bg) 78%, transparent);
-  --ui-theme-overlay:color-mix(in srgb, var(--bs-body-bg) 94%, transparent);
-  --ui-theme-input:color-mix(in srgb, var(--bs-body-bg) 86%, transparent);
+  --_ui-surface-opacity:clamp(78%, var(--ui-theme-surface-opacity, 78%), 100%);
+  --ui-theme-surface:color-mix(in srgb, var(--bs-body-bg) var(--_ui-surface-opacity), transparent);
+  --ui-theme-overlay:color-mix(in srgb, var(--bs-body-bg) min(100%, calc(var(--_ui-surface-opacity) + 16%)), transparent);
+  --ui-theme-input:color-mix(in srgb, var(--bs-body-bg) min(100%, calc(var(--_ui-surface-opacity) + 8%)), transparent);
   --ui-theme-shadow:var(--bs-box-shadow-sm);
   --ui-theme-blur:blur(14px) saturate(115%);
   background:
@@ -32,9 +33,10 @@ body[data-ui-theme="glassmorphism"] {
   --bs-box-shadow-lg:0 20px 64px rgba(15,23,42,.24);
   --ui-glass-highlight:rgba(255,255,255,.48);
   --ui-glass-sheen:rgba(255,255,255,.16);
-  --ui-theme-surface:color-mix(in srgb, var(--bs-body-bg) 52%, transparent);
-  --ui-theme-overlay:color-mix(in srgb, var(--bs-body-bg) 90%, transparent);
-  --ui-theme-input:color-mix(in srgb, var(--bs-body-bg) 72%, transparent);
+  --_ui-surface-opacity:clamp(52%, var(--ui-theme-surface-opacity, 52%), 100%);
+  --ui-theme-surface:color-mix(in srgb, var(--bs-body-bg) var(--_ui-surface-opacity), transparent);
+  --ui-theme-overlay:color-mix(in srgb, var(--bs-body-bg) min(100%, calc(var(--_ui-surface-opacity) + 38%)), transparent);
+  --ui-theme-input:color-mix(in srgb, var(--bs-body-bg) min(100%, calc(var(--_ui-surface-opacity) + 20%)), transparent);
   --ui-theme-shadow:inset 0 1px 0 var(--ui-glass-highlight), var(--bs-box-shadow-sm);
   --ui-theme-blur:blur(24px) saturate(140%);
   background:
@@ -90,24 +92,36 @@ body[data-ui-theme="soft"] {
   background:var(--bs-tertiary-bg);
 }
 body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) { min-height:100vh; }
-body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) :is(.ui-card, .app-sidebar, .ui-calendar, .navbar, .ui-header, .ui-footer, .ui-toolbar, .catalog-header, .catalog-sidebar, .catalog-card) {
+body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) :is(.ui-card, .ui-surface, .ui-page-header-panel, .app-sidebar, .ui-calendar, .navbar, .ui-header, .ui-footer, .ui-toolbar, .catalog-header, .catalog-sidebar, .catalog-card) {
   background:var(--ui-theme-surface);
   -webkit-backdrop-filter:var(--ui-theme-blur);
   backdrop-filter:var(--ui-theme-blur);
 }
-body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) :is(.ui-card, .catalog-card) { box-shadow:var(--ui-theme-shadow); }
+body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) :is(.ui-card, .ui-surface, .ui-page-header-panel, .catalog-card) { box-shadow:var(--ui-theme-shadow); }
 body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) :is(.form-control, .form-select) { background-color:var(--ui-theme-input); }
 body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) :is(.ui-dialog, .ui-datepicker-popup, .ui-select-menu, .ui-input-popup) { background:var(--ui-theme-overlay); }
+/* Readonly stays selectable and focusable, with an opaque AA surface and a non-color cue. */
+body .form-control[readonly]:not(:disabled) {
+  background-color:var(--bs-tertiary-bg);
+  color:var(--bs-body-color);
+  border-style:dashed;
+}
+body .form-control[readonly]:not(:disabled):focus-visible {
+  border-color:currentColor;
+  outline:2px dashed currentColor;
+  outline-offset:3px;
+  box-shadow:none;
+}
 /* Keep modal contents out of a filtered containing block so fixed tooltips keep their coordinates. */
 body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-dialog::backdrop { -webkit-backdrop-filter:blur(5px); backdrop-filter:blur(5px); }
 body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) :is(.ui-datepicker-popup, .ui-select-menu, .ui-input-popup) { -webkit-backdrop-filter:var(--ui-theme-blur); backdrop-filter:var(--ui-theme-blur); }
 body[data-ui-theme="soft"] .btn:not(:focus-visible):not(:active) { box-shadow:var(--bs-box-shadow-sm); }
 body[data-ui-theme="soft"] { --ui-pointer-button-shadow:var(--bs-box-shadow-sm); }
-body[data-ui-theme="flat"] :is(.ui-card, .ui-dialog, .ui-toast, .ui-tooltip, .ui-datepicker-popup, .ui-select-menu, .ui-input-popup, .catalog-card) { box-shadow:none; }
+body[data-ui-theme="flat"] :is(.ui-card, .ui-surface, .ui-page-header-panel, .ui-dialog, .ui-toast, .ui-tooltip, .ui-datepicker-popup, .ui-select-menu, .ui-input-popup, .catalog-card) { box-shadow:none; }
 /* Notifications keep semantic success / danger / info / warning colors. */
 body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-toast { -webkit-backdrop-filter:var(--ui-theme-blur); backdrop-filter:var(--ui-theme-blur); }
 body[data-ui-theme="soft"] .ui-toast { box-shadow:var(--bs-box-shadow-lg); }
-body[data-ui-theme="glassmorphism"] :is(.ui-card, .catalog-card, .catalog-header, .catalog-sidebar, .app-sidebar, .ui-calendar, .navbar, .ui-header, .ui-footer, .ui-toolbar, .ui-dialog, .ui-datepicker-popup, .ui-select-menu, .ui-input-popup) {
+body[data-ui-theme="glassmorphism"] :is(.ui-card, .ui-surface, .ui-page-header-panel, .catalog-card, .catalog-header, .catalog-sidebar, .app-sidebar, .ui-calendar, .navbar, .ui-header, .ui-footer, .ui-toolbar, .ui-dialog, .ui-datepicker-popup, .ui-select-menu, .ui-input-popup) {
   background-image:linear-gradient(135deg, var(--ui-glass-sheen), transparent 60%);
   border-color:var(--ui-glass-highlight);
 }

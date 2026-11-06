@@ -41,9 +41,38 @@ progress[value]::-moz-progress-bar { transition:width var(--motion-duration-base
   progress[value]::-moz-progress-bar { transition:none; }
 }
 
-/* Popovers can leave the top layer visually after their semantic close.
-   Dialogs and hidden panels keep immediate display:none and use inert JS visuals. */
-@supports (transition-behavior:allow-discrete) {
+/* Retain top-layer painting only when overlay can defer its removal.
+   Unsupported browsers close immediately using native display behavior. */
+@supports (transition-behavior:allow-discrete) and (overlay:auto) {
+  dialog.ui-dialog {
+    opacity:0; translate:none; pointer-events:none;
+    transition:opacity var(--motion-duration-fast) var(--motion-ease-in),
+      translate var(--motion-duration-fast) var(--motion-ease-in),
+      display var(--motion-duration-fast) allow-discrete,
+      overlay var(--motion-duration-fast) allow-discrete;
+  }
+  dialog.ui-dialog.ui-drawer { translate:var(--ui-drawer-x) var(--ui-drawer-y); }
+  dialog.ui-dialog[open] {
+    opacity:1; translate:none; pointer-events:auto; animation:none;
+    transition-duration:var(--motion-duration-base);
+    transition-timing-function:var(--motion-ease-out);
+  }
+  dialog.ui-dialog::backdrop {
+    opacity:0;
+    transition:opacity var(--motion-duration-fast) var(--motion-ease-in),
+      display var(--motion-duration-fast) allow-discrete,
+      overlay var(--motion-duration-fast) allow-discrete;
+  }
+  dialog.ui-dialog[open]::backdrop {
+    opacity:1; animation:none;
+    transition-duration:var(--motion-duration-base);
+    transition-timing-function:var(--motion-ease-out);
+  }
+  @starting-style {
+    dialog.ui-dialog[open] { opacity:0; translate:none; }
+    dialog.ui-dialog.ui-drawer[open] { translate:var(--ui-drawer-x) var(--ui-drawer-y); }
+    dialog.ui-dialog[open]::backdrop { opacity:0; }
+  }
   :is(.ui-popup, .ui-select-menu, .ui-input-popup, .ui-datepicker-popup) {
     opacity:0;
     pointer-events:none;

@@ -4,7 +4,8 @@
 .ui-invalid-feedback { display:block; color:var(--bs-danger-text-emphasis); font-size:var(--text-xs); }
 [data-ui-field] > [data-ui-error] { grid-column:1 / -1; }
 .ui-tooltip { position:fixed; z-index:1200; top:0; left:0; width:max-content; max-width:min(20rem,calc(100vw - 16px)); padding:var(--space-2) var(--space-3); border-radius:var(--bs-border-radius); background:var(--bs-body-color); color:var(--bs-body-bg); box-shadow:var(--bs-box-shadow-sm); font:var(--text-xs)/var(--leading-normal) var(--bs-body-font-family); overflow-wrap:anywhere; }
-.ui-dialog { width:min(34em,92vw); min-width:0; }
+.ui-dialog { width:min(34em,92vw); min-width:0; overscroll-behavior:contain; }
+html:has(.ui-dialog:modal) { overflow:hidden; scrollbar-gutter:stable; }
 @media (width < 768px) { .ui-dialog form { grid-template-columns:1fr; } }
 .field [data-ui-error] { color:var(--bs-danger-text-emphasis); }
 .ui-dialog form > .field { grid-column:1 / -1; }

@@ -11,6 +11,9 @@
 .ui-agent-node[data-state="running"] { border-color:var(--bs-primary); }
 .ui-agent-node[data-state="running"] .ui-agent-state { color:var(--bs-primary-text-emphasis); }
 .ui-agent-node[data-state="blocked"] .ui-agent-state { color:var(--bs-danger-text-emphasis); }
+.ui-agent-node[data-state="review"] { border-color:var(--bs-warning); }
+.ui-agent-node[data-state="review"] .ui-agent-state { color:var(--bs-warning-text-emphasis); }
+.ui-agent-node[data-state="review"] .ui-agent-state::before { display:none; }
 .ui-agent-node:is([data-state="complete"],[data-state="running"]) .ui-agent-state::before { background:currentColor; }
 .ui-agent-flow { display:flex; gap:var(--space-6); }
 .ui-agent-flow > li { position:relative; flex:1; }

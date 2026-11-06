@@ -75,7 +75,7 @@
   });
   function cancelExit(element) {
     const visual = exitVisuals.get(element);
-    if (visual) { visual.animation.cancel(); visual.sourceAnimation?.cancel(); visual.host.remove(); exitVisuals.delete(element); }
+    if (visual) { visual.animation.cancel(); visual.host.remove(); exitVisuals.delete(element); }
   }
   // Scope scroll-triggered closes to this synchronous operation only.
   let immediateExit = false;
@@ -87,14 +87,20 @@
   function prepareExit(element) {
     // Only out-of-flow surfaces retain an inert visual. Normal-flow content
     // disappears immediately so it cannot paint over the reflowed document.
-    if (!element || element.matches('[popover]') || reducedMotion.matches || !element.isConnected || !element.animate) return () => {};
+    if (!element || element.matches('dialog, [popover]') || reducedMotion.matches || !element.isConnected || !element.animate) return () => {};
+    // Bound style-copy work for remaining tooltip/toast exit visuals.
+    const descendants = [];
+    const walker = doc.createTreeWalker(element, NodeFilter.SHOW_ELEMENT);
+    while (walker.nextNode()) {
+      if (descendants.length === 100) return () => {};
+      descendants.push(walker.currentNode);
+    }
     const timing = getComputedStyle(element);
     const region = element.matches('.ui-toast') ? element.closest('.ui-toasts') : null;
     if (!region && !['fixed','absolute'].includes(timing.position)) return () => {};
     const bounds = element.getBoundingClientRect();
     const opacity = Number(timing.opacity);
-    const destination = element.matches('.ui-drawer')
-      ? timing.getPropertyValue('--ui-drawer-x').trim()+' '+timing.getPropertyValue('--ui-drawer-y').trim() : '0 5px';
+    const destination = '0 5px';
     const parent = (region || element).parentElement?.closest('dialog[open]') || doc.body;
     if (!bounds.width || !bounds.height || opacity < .01) return () => {};
     // A closed shadow contains a frozen, inert visual copy. No duplicate IDs,
@@ -112,7 +118,7 @@
     }
     const shadow = host.attachShadow({mode:'closed'});
     const clone = element.cloneNode(true);
-    const originals = [element, ...all(element, '*')];
+    const originals = [element, ...descendants];
     const copies = [clone, ...all(clone, '*')];
     originals.forEach((original, index) => {
       const copy = copies[index];
@@ -127,9 +133,7 @@
       copy.style.pointerEvents = 'none';
       if (original.matches('input, textarea, select')) copy.value = original.value;
     });
-    // A cloned dialog must not participate in the browser's dialog lifecycle.
-    const surface = element.tagName === 'DIALOG' ? doc.createElement('div') : clone;
-    if (surface !== clone) { surface.style.cssText = clone.style.cssText; surface.append(...clone.childNodes); }
+    const surface = clone;
     surface.removeAttribute('hidden');
     Object.assign(surface.style, {position:'relative',inset:'auto',margin:'0',width:'100%',height:'100%',minWidth:'0',minHeight:'0',maxWidth:'none',maxHeight:'none',boxSizing:'border-box',opacity:'1',transform:'none',translate:'none',scale:'none'});
     shadow.append(surface);
@@ -144,11 +148,7 @@
       copies.forEach((copy,index) => { copy.scrollLeft=scrollPositions[index][0]; copy.scrollTop=scrollPositions[index][1]; });
       const animation = motion(host, [{opacity,translate:'0 0'},{opacity:0,translate:destination}], 'fast', 'in');
       if (!animation) { host.remove(); return; }
-      // Keep the source's exit observable even though native close immediately
-      // hides it. Only the inert copy paints; both animations share the timing.
-      const sourceAnimation = element.tagName === 'DIALOG'
-        ? motion(element, [{opacity},{opacity:0}], 'fast', 'in') : null;
-      exitVisuals.set(element, {host, animation, sourceAnimation});
+      exitVisuals.set(element, {host, animation});
       const cleanup = () => { host.remove(); if (exitVisuals.get(element)?.host === host) exitVisuals.delete(element); };
       animation.finished.then(cleanup, cleanup);
 
@@ -288,7 +288,7 @@
     if (tooltip && panel.contains(tooltip.trigger)) hideTooltip();
     if (activeInputPicker && panel.contains(activeInputPicker.root)) activeInputPicker.close();
     if (panel.tagName === 'DIALOG') {
-      if (panel.open) { exitMotion(panel); panel.close(); }
+      if (panel.open) panel.close();
     } else {
       const close = () => {
         focusAfterHide(panel, trigger);
@@ -432,6 +432,38 @@
     copyFromButton(button);
   });
 
+  const toastAnnouncers = new Map();
+  function initToastAnnouncers() {
+    for (const urgency of ['polite','assertive']) {
+      // Recreate a region whose node was dropped, e.g. by a page swap that replaces body.
+      const existing = toastAnnouncers.get(urgency);
+      if (existing?.live.isConnected) continue;
+      const live = doc.createElement('div');
+      live.className = 'visually-hidden';
+      live.setAttribute('aria-live', urgency);
+      live.setAttribute('aria-atomic', 'true');
+      doc.body.append(live);
+      toastAnnouncers.set(urgency, {live, queue:existing?.queue || [], running:false});
+    }
+  }
+  function announceToast(text, urgency) {
+    initToastAnnouncers();
+    const state = toastAnnouncers.get(urgency);
+    state.queue.push(text);
+    if (state.running) return;
+    const next = () => {
+      if (!state.queue.length) { state.running = false; return; }
+      state.running = true;
+      state.live.textContent = '';
+      // Commit an empty live region before inserting even an identical message.
+      setTimeout(() => {
+        state.live.textContent = state.queue.shift();
+        setTimeout(next, 50);
+      }, 20);
+    };
+    next();
+  }
+
   function toast(message = '', options = {}) {
     // Keep toast('message', options) working; structured notifications accept one object.
     if (message !== null && typeof message === 'object' && !Array.isArray(message)) {
@@ -446,15 +478,14 @@
     if (!region) {
       region = doc.createElement('div');
       region.className = 'ui-toasts';
-      region.setAttribute('aria-label', '通知');
       doc.body.append(region);
     }
+    region.setAttribute('role', 'region');
+    region.setAttribute('aria-label', '通知');
     const note = doc.createElement('div');
     note.className = 'ui-toast notice alert alert-' + variant;
-    note.setAttribute('role', variant === 'danger' ? 'alert' : 'status');
     const words = doc.createElement('span');
     words.className = 'words ui-toast-content';
-    note.setAttribute('aria-atomic', 'true');
     if (title || meta) {
       const header = doc.createElement('div');
       header.className = 'ui-toast-header';
@@ -506,6 +537,7 @@
     close.setAttribute('aria-label', '通知を閉じる');
     note.append(words, close);
     region.append(note);
+    announceToast([title, body, meta].filter(Boolean).join(' '), variant === 'danger' ? 'assertive' : 'polite');
     while (all(region, ':scope > .ui-toast').length > 5) {
       const first = region.querySelector(':scope > .ui-toast');
       if (first.contains(doc.activeElement)) break;
@@ -567,11 +599,20 @@
     if(state.marker?.parentNode)state.marker.replaceWith(state.panel);
     state.marker=null;state.overlay=false;
   }
+  function removeSidebarDialog(state,dialog, immediate=false){
+    if(!dialog)return;
+    // Restore the real sidebar immediately; only its closed native shell remains.
+    getComputedStyle(dialog).display;
+    const animations=immediate?[]:dialog.getAnimations();
+    if(!animations.length){dialog.remove();return;}
+    state.closingDialogs.add(dialog);
+    Promise.allSettled(animations.map(animation=>animation.finished)).then(()=>{dialog.remove();state.closingDialogs.delete(dialog);});
+  }
   function sidebarClose(state,restoreFocus=true){
     const dialog=state.dialog;
     if(dialog?.open){if(!restoreFocus)openers.delete(dialog);hide(dialog);}
     sidebarRestore(state);state.open=false;
-    dialog?.remove();state.dialog=null;
+    removeSidebarDialog(state,dialog,!restoreFocus);state.dialog=null;
     sidebarSync(state);
   }
   function responsiveSidebar(root,options){
@@ -592,7 +633,7 @@
         state.marker=doc.createComment('responsive sidebar');state.panel.before(state.marker);
         const close=doc.createElement('button');close.type='button';close.className='btn btn-outline-secondary btn-icon-only ui-sidebar-dialog-close';close.setAttribute('icon','mdi-close');close.setAttribute('aria-label','メニューを閉じる');close.setAttribute('data-ui-dismiss','dialog');
         dialog.append(close,state.panel);doc.body.append(dialog);scanIcons(dialog);sidebarSync(state);
-        dialog.addEventListener('close',()=>{if(state.dialog!==dialog)return;sidebarRestore(state);state.open=false;state.dialog=null;dialog.remove();sidebarSync(state);emit(root,'sidebarchange',{mode:state.mode,open:false});});
+        dialog.addEventListener('close',()=>{if(state.dialog!==dialog)return;sidebarRestore(state);state.open=false;state.dialog=null;removeSidebarDialog(state,dialog);sidebarSync(state);emit(root,'sidebarchange',{mode:state.mode,open:false});});
         state.observer=new MutationObserver(()=>{if(!root.isConnected)sidebarClose(state,false);});state.observer.observe(doc.body,{childList:true,subtree:true});
         show(dialog,options.trigger);
       }else {sidebarSync(state);enterMotion(state.panel);}
@@ -606,7 +647,7 @@
     if(state){sidebarSync(state);return state;}
     const panel=root.querySelector(':scope > .app-sidebar');if(!panel)return null;
     const listen=scopedEvents(root),original={hidden:panel.hidden,mode:root.getAttribute('data-ui-sidebar-mode'),state:root.getAttribute('data-ui-sidebar-state')};
-    const mode=sidebarMode(root);state={root,panel,mode,device:sidebarDevice(),open:mode==='expanded',overlay:false};responsiveSidebarStates.set(root,state);
+    const mode=sidebarMode(root);state={root,panel,mode,device:sidebarDevice(),open:mode==='expanded',overlay:false,closingDialogs:new Set()};responsiveSidebarStates.set(root,state);
     listen(panel,'click',event=>{
       const link=closest(event.target,'a[href]');
       if(link && !disabled(link) && !event.defaultPrevented && !link.matches('[data-ui-toggle], [data-ui-copy]') && !event.ctrlKey&&!event.metaKey&&!event.shiftKey&&!event.altKey && state.overlay){sidebarClose(state);emit(root,'sidebarchange',{mode:state.mode,open:false});}
@@ -615,6 +656,7 @@
     listen(panel,'keydown',event=>{if(event.key==='Escape'&&state.mode==='collapse'&&state.open){event.preventDefault();responsiveSidebar(root,{open:false});}});
     onDispose(root,()=>{
       if(state.overlay)sidebarClose(state,false);
+      for(const dialog of state.closingDialogs)dialog.remove();state.closingDialogs.clear();
       sidebarRestore(state);panel.hidden=original.hidden;
       for(const item of all(panel,'[data-ui-sidebar-title]')){item.removeAttribute('title');item.removeAttribute('data-ui-sidebar-title');}
       for(const [name,value] of [['data-ui-sidebar-mode',original.mode],['data-ui-sidebar-state',original.state]]){if(value===null)root.removeAttribute(name);else root.setAttribute(name,value);}
@@ -1458,7 +1500,10 @@
     button.className = select.className;
     button.classList.add('form-select','ui-select-trigger');
     if(select.hasAttribute('tabindex'))button.tabIndex=select.tabIndex;
-    if(select.classList.contains('w-auto'))wrapper.classList.add('w-auto');
+    // Width belongs to the wrapper; reuse the utilities for all device ranges.
+    for(const name of select.classList)if(name==='w-auto' || /^(?:(?:tablet|mobile):)?ui-w-/.test(name)) {
+      wrapper.classList.add(name);button.classList.remove(name);
+    }
     button.style.cssText = select.style.cssText;
     if (select.style.width) wrapper.style.width = select.style.width;
     button.setAttribute('role','combobox'); button.setAttribute('aria-haspopup','listbox');
@@ -1601,7 +1646,7 @@
       for(const [name,value] of [['tabindex',original.tabindex],['aria-hidden',original.hidden]]){if(value===null)select.removeAttribute(name);else select.setAttribute(name,value);}
       if(wrapper.parentNode)wrapper.replaceWith(select);selectControls.delete(select);
     });
-    selectControls.set(select,{sync:syncControl});syncControl();
+    selectControls.set(select,{sync:()=>{syncControl();if(isOpen()){render();highlight(select.selectedIndex);}}});syncControl();
   }
   window.addEventListener('resize',()=>withoutExitMotion(()=>openSelect?.close()));
   doc.addEventListener('scroll',event=>{if(openSelect && !openSelect.popup.contains(event.target))withoutExitMotion(()=>openSelect.close());},true);
@@ -2655,6 +2700,16 @@
     applyDesignTheme(theme);
     if (persist) {
       try { localStorage.setItem('kav-ui-design-theme', theme); } catch { /* Theme selection still works without storage. */ }
+    }
+    return true;
+  }
+  // Percent units, matching the public CSS variable. Each glass theme clamps its lower bound.
+  function setSurfaceOpacity(value, {persist = false} = {}) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return false;
+    const opacity = Math.min(100, Math.max(52, value));
+    doc.body.style.setProperty('--ui-theme-surface-opacity', opacity + '%');
+    if (persist) {
+      try { localStorage.setItem('kav-ui-surface-opacity', String(opacity)); } catch { /* Storage is optional. */ }
     }
     return true;
   }
@@ -4119,20 +4174,6 @@ return {signum,lerp,clampInt,clampDouble,sanitizeDegreesInt,sanitizeDegreesDoubl
   });
   window.addEventListener('resize', ()=>withoutExitMotion(hideTooltip));
   doc.addEventListener('scroll', ()=>withoutExitMotion(hideTooltip), true);
-  doc.addEventListener('cancel', event => {
-    const dialog = event.target;
-    if (!dialog.matches?.('dialog[data-ui-dialog]')) return;
-    const play = prepareExit(dialog);
-    setTimeout(() => { if (!event.defaultPrevented && !dialog.open) play(); }, 0);
-  }, true);
-  doc.addEventListener('submit', event => {
-    const form = event.target;
-    const dialog = form.closest('dialog[data-ui-dialog][open]');
-    const method = event.submitter?.getAttribute('formmethod') || form.method;
-    if (!dialog || method !== 'dialog' || event.defaultPrevented || !form.checkValidity()) return;
-    const play = prepareExit(dialog);
-    setTimeout(() => { if (!event.defaultPrevented && !dialog.open) play(); }, 0);
-  });
   doc.addEventListener('reset', event => {
     const form=event.target,state=validationStates.get(form);
     if(!state)return;
@@ -4206,12 +4247,19 @@ return {signum,lerp,clampInt,clampDouble,sanitizeDegreesInt,sanitizeDegreesDoubl
     event.preventDefault(); moveCard(dragging.card, column); endDrag();
   });
   doc.addEventListener('dragend', endDrag);
-  window.KavUI = Object.freeze({init, destroy, show, hide, toast, loading, copy, chart, splitter, sidebar:responsiveSidebar, setDesignTheme, setColorTheme, setPalette, setCustomPalette, getCustomPalette});
+  window.KavUI = Object.freeze({init, destroy, sync:syncSelect, show, hide, toast, loading, copy, chart, splitter, sidebar:responsiveSidebar, setSurfaceOpacity, setDesignTheme, setColorTheme, setPalette, setCustomPalette, getCustomPalette});
   function boot() {
+    initToastAnnouncers();
     applyTheme(resolvedColorTheme(), false);
     let savedDesign = null, savedPalette = null, savedCustom = null;
     if (doc.body.hasAttribute('data-ui-theme-persist')) {
       try { savedDesign = localStorage.getItem('kav-ui-design-theme'); savedPalette = localStorage.getItem('kav-ui-palette'); savedCustom=JSON.parse(localStorage.getItem('kav-ui-custom-palette') || 'null'); } catch { /* Storage is optional. */ }
+    }
+    if (doc.body.hasAttribute('data-ui-theme-persist') && !doc.body.style.getPropertyValue('--ui-theme-surface-opacity')) {
+      try {
+        const saved = localStorage.getItem('kav-ui-surface-opacity');
+        if (saved !== null && saved.trim() !== '') setSurfaceOpacity(Number(saved));
+      } catch { /* Storage is optional. */ }
     }
     const explicitSeed=doc.documentElement.getAttribute('data-ui-palette-seed');
     const explicitChroma=doc.documentElement.getAttribute('data-ui-palette-chroma');

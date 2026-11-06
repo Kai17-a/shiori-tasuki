@@ -1,7 +1,9 @@
 /* Native select retains form submission and validation; the popup inherits UI tokens. */
-.ui-select { display:inline-grid; grid-template-columns:minmax(0,1fr); position:relative; width:100%; min-width:0; vertical-align:middle; }
-.ui-select-native { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip-path:inset(50%) !important; white-space:nowrap !important; pointer-events:none; }
-.ui-select-trigger { text-align:start; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:inherit; }
+.ui-select { display:inline-grid; grid-template-columns:minmax(0,1fr); position:relative; width:100%; min-width:min(100%,calc(var(--space-12) * 2)); vertical-align:middle; }
+.ui-select-native { position:absolute; grid-area:1 / 1; clip-path:inset(50%); pointer-events:none; }
+/* Reserve the longest option in toolbars without adding a sizing element. */
+.ui-toolbar-group .ui-select-native { position:static; }
+.ui-select-trigger { grid-area:1 / 1; width:100%; text-align:start; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:inherit; }
 .ui-select-trigger:disabled { cursor:not-allowed; opacity:.55; }
 .ui-select-trigger[aria-invalid="true"] { border-color:var(--bs-danger); }
 .ui-select-menu { position:fixed; inset:auto; margin:0; padding:.35rem; box-sizing:border-box; overflow:auto; overscroll-behavior:contain;

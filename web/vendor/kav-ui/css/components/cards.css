@@ -1,5 +1,7 @@
 /* Reusable cards. Requires tokens.css and scales.css. */
-.ui-card { display:flex; flex-direction:column; min-width:0; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius-lg); background:var(--bs-body-bg); color:var(--bs-body-color); overflow-wrap:anywhere; }
+/* Shared surface primitives; .ui-surface does not impose card layout. */
+:is(.ui-card, .ui-surface, .ui-page-header-panel) { min-width:0; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius-lg); background:var(--bs-body-bg); color:var(--bs-body-color); overflow-wrap:anywhere; }
+.ui-card { display:flex; flex-direction:column; }
 .ui-card-header, .ui-card-body, .ui-card-footer { padding:var(--space-4); }
 .ui-card-header { border-bottom:1px solid var(--bs-border-color); }
 .ui-card-body { flex:1; min-width:0; }

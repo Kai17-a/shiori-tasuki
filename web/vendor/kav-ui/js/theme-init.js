@@ -33,6 +33,10 @@
   const restore=()=>{
     if(!document.body)return false;
     if(!document.body.hasAttribute('data-ui-theme-persist'))return true;
+    const savedOpacity=read('kav-ui-surface-opacity');
+    if(!document.body.style.getPropertyValue('--ui-theme-surface-opacity') && savedOpacity!==null && savedOpacity.trim()!=='' && Number.isFinite(Number(savedOpacity))) {
+      document.body.style.setProperty('--ui-theme-surface-opacity',Math.min(100,Math.max(52,Number(savedOpacity)))+'%');
+    }
     if(!document.body.hasAttribute('data-ui-theme') && designs.includes(design))document.body.dataset.uiTheme=design;
     const explicitSeed=root.getAttribute('data-ui-palette-seed');
     const explicitChroma=root.getAttribute('data-ui-palette-chroma');

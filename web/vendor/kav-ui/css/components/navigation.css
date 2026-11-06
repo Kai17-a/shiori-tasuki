@@ -42,6 +42,10 @@
 .breadcrumb li + li::before { content:var(--ui-breadcrumb-separator,"/"); flex:none; color:var(--bs-secondary-color); margin-inline-end:var(--space-2); }
 .breadcrumb-chevron { --ui-breadcrumb-separator:"›"; }
 .breadcrumb a { display:inline-flex; align-items:center; gap:var(--space-1); min-width:0; }
+/* Touch: a 44px hit area from padding, cancelled by negative margins so the trail keeps its height. */
+@media (pointer:coarse) {
+  .breadcrumb a { min-width:var(--ui-touch-target); padding-block:max(0px, (var(--ui-touch-target) - 1lh) / 2 + 1px); margin-block:min(0px, (1lh - var(--ui-touch-target)) / 2 - 1px); }
+}
 .breadcrumb [aria-current="page"] { color:var(--bs-body-color); font-weight:500; }
 
 .tabs { display:flex; flex-wrap:wrap; gap:var(--space-1); border-bottom:1px solid var(--bs-border-color); min-width:0; }
