@@ -26,8 +26,9 @@ and report progress with add_note (CLI: task-tool note ID MESSAGE). When you fin
 with complete_task (CLI: task-tool done ID --summary TEXT), summarizing what you did and how \
 you verified it, and attach PR and artifact links (CLI: --link URL). Completion goes to the \
 user for review; only the user approves it. If you cannot finish, call fail_task \
-(CLI: task-tool fail ID --reason TEXT). Split large work with create_subtasks \
-(CLI: task-tool split ID TITLE...). Use create_task (CLI: task-tool create TITLE --body TEXT) \
+(CLI: task-tool fail ID --reason TEXT). Before starting, split work that has two or more \
+steps the user could check on their own into 3-7 subtasks with create_subtasks \
+(CLI: task-tool split ID TITLE...); do quick single-step work directly without subtasks. Use create_task (CLI: task-tool create TITLE --body TEXT) \
 when the user asks to register something. GitHub-linked titles and descriptions must be edited on GitHub. Work in the task's workdir. \
 Discover tasks with task-tool list --status todo --json id,title; inspect statistics with \
 task-tool stats. Use --as codex or TASK_TOOL_ACTOR=codex for Codex; Claude Code is detected \
