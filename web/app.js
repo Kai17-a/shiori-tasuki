@@ -9,14 +9,11 @@
     review: 'badge text-bg-warning',
     done: 'badge text-bg-success',
   };
-  const CREATOR_LABELS = { user: '手動で作成', github: 'GitHubから取り込み' };
   const VIEWS = {
     overview: { title: '概要', description: '自分のタスクを整理し、会話で依頼したAIの作業と結果を確認できます。' },
     board: { title: 'ボード', description: 'カードを移動して状態を変更できます。同じ色の帯は親子のまとまりで、カードに触れると親と子が線でつながります。' },
-    github: { title: 'GitHub', description: '自分に割り当てられたIssueの同期状態と、リポジトリごとの件数です。' },
     activity: { title: 'アクティビティ', description: 'エージェントとあなたが、いつ、どのタスクに何をしたかを新しい順に表示します。' },
-    agents: { title: 'AIエージェント', description: 'エージェントごとの作業状況と、取り組んでいるタスクです。' },
-    settings: { title: '設定', description: '画面の表示（ライト・ダーク、背景画像）を設定します。' },
+    settings: { title: '設定', description: '表示や背景画像の設定、GitHub との同期、AI への依頼方法を確認できます。' },
   };
 
   const ACTOR_LABELS = { user: 'あなた', github: 'GitHub' };
@@ -603,30 +600,11 @@
       </a>`).join('')}</div>`;
   }
 
-  function renderAgents(stats) {
-    const root = $('#agent-cards');
-    if (!stats.agents.length) {
-      root.innerHTML = '<p class="type-body type-color-muted">まだAIエージェントの作業はありません。下の「MCPで接続する」の手順でエージェントを登録すると、作業がここに表示されます。</p>';
-      return;
-    }
-    root.innerHTML = stats.agents.map((agent) => {
-      const current = tasks.filter((t) => t.assignee === agent.name && t.status === 'in_progress');
-      const badge = agent.stalled ? '<span class="badge text-bg-warning">停滞あり</span>'
-        : agent.working ? '<span class="badge badge-neutral">作業中</span>'
-        : '<span class="badge badge-neutral rounded-pill fw-normal border">待機中</span>';
-      return `<article class="ui-card">
-        <div class="ui-card-header fx fx-justify-between fx-items-center sp-gap-3">
-          <h3 class="ui-card-title sp-m-0 fx-flex-1 fx-min-0 type-truncate">${escapeHtml(agent.name)}</h3>
-          <span class="fx-shrink-0">${badge}</span>
-        </div>
-        <div class="ui-card-body ui-stack">
-          <p class="type-caption sp-m-0">作業中 ${agent.working} · 今日の完了 ${agent.done_today}</p>
-          <p class="type-caption type-color-muted sp-m-0">最後の動き: ${agent.last_activity_at ? escapeHtml(relativeTime(agent.last_activity_at)) : 'なし'}</p>
-          ${current.length ? `<ul class="ui-list-group ui-list-group-flush" role="list">${current.map((t) => `
-            <li class="ui-list-item"><span class="ui-list-body"><a class="ui-list-title" href="#task-${t.id}">#${t.id} ${escapeHtml(t.title)}</a></span>${isStalled(t) ? '<span class="badge text-bg-warning">停滞</span>' : ''}</li>`).join('')}</ul>` : '<p class="type-caption type-color-muted sp-m-0">取り組み中のタスクはありません。</p>'}
-        </div>
-      </article>`;
-    }).join('');
+  function renderAgentSummary(stats) {
+    $('#agent-summary').innerHTML = stats.agents.length ? stats.agents.map((agent) => `
+      <div class="ui-list-item"><span class="ui-list-body"><span class="ui-list-title">${escapeHtml(actorLabel(agent.name))} · ${agent.stalled ? '停滞あり' : agent.working ? '作業中' : '待機中'}</span>
+      <span class="ui-list-description">作業中 ${agent.working} · 今日の完了 ${agent.done_today} · 最後の動き: ${agent.last_activity_at ? escapeHtml(relativeTime(agent.last_activity_at)) : 'なし'}</span></span></div>`).join('')
+      : '<p class="type-caption type-color-muted">まだAIの作業はありません。</p>';
   }
 
   function renderCharts(stats) {
@@ -655,57 +633,9 @@
         unit: '件',
       });
     }
-
-    const repos = stats.by_repo.length ? stats.by_repo : [{ repo: null, open: 0, done: 0 }];
-    KavUI.chart('#repo-chart', {
-      type: 'bar',
-      label: 'リポジトリ別のタスク',
-      labels: repos.map((r) => r.repo ?? 'ローカル'),
-      series: [
-        { name: '未完了', values: repos.map((r) => r.open) },
-        { name: '完了', values: repos.map((r) => r.done) },
-      ],
-      unit: '件',
-    });
   }
 
-  function renderIssues() {
-    const root = $('#issue-table');
-    const linked = tasks.filter((t) => t.github);
-    KavUI.destroy(root);
-    $('#issue-rows').innerHTML = linked.length
-      ? linked.map((task) => `
-        <tr data-ui-row-id="task-${task.id}" data-ui-table-keywords="#${task.github.number}">
-          <td>${escapeHtml(task.github.repo)}#${task.github.number}</td>
-          <td><a href="#task-${task.id}">${escapeHtml(task.title)}</a></td>
-          <td data-ui-sort-value="${task.status}"><span class="${STATUS_BADGES[task.status]}">${STATUS_LABELS[task.status]}</span></td>
-          <td data-ui-sort-value="${escapeHtml(task.updated_at)}"><time datetime="${escapeHtml(task.updated_at)}">${escapeHtml(relativeTime(task.updated_at))}</time></td>
-        </tr>`).join('')
-      : '<tr><td colspan="4">同期したIssueはまだありません。</td></tr>';
-    KavUI.init(root);
-  }
-
-  function renderCreators(stats) {
-    const list = $('#creator-list');
-    if (!stats.by_creator.length) {
-      list.innerHTML = '<p class="ui-list-item type-caption type-color-muted">まだタスクはありません。</p>';
-      return;
-    }
-    list.innerHTML = stats.by_creator.map((c) => {
-      const isAgent = !(c.created_by in CREATOR_LABELS);
-      const icon = isAgent ? 'mdi-message-text-outline' : c.created_by === 'github' ? 'mdi-link' : 'mdi-account';
-      const name = isAgent ? `${c.created_by}（AIエージェント）` : CREATOR_LABELS[c.created_by];
-      return `<div class="ui-list-item"><span icon="${icon}" aria-hidden="true"></span><span class="ui-list-body">${escapeHtml(name)}</span><span class="badge badge-neutral">${c.count}</span></div>`;
-    }).join('');
-  }
-
-  function renderNavCounts(stats) {
-    setText('[data-nav-count="open"]', tasks.filter((t) => t.status !== 'done').length);
-    setText('[data-nav-count="github"]', tasks.filter((t) => t.github).length);
-    setText('[data-nav-count="agents"]', stats.agents.length);
-  }
-
-  const STATS_REGIONS = ['#creator-list', '#stalled-list', '#agent-cards'];
+  const STATS_REGIONS = ['#stalled-list', '#agent-summary'];
   async function loadStats({ quiet = false } = {}) {
     const stats = await api('GET', '/api/stats');
     renderMetrics(stats);
@@ -713,9 +643,8 @@
     for (const id of STATS_REGIONS) KavUI.destroy($(id));
     renderCharts(stats);
     renderStalled(stats);
-    renderAgents(stats);
-    renderCreators(stats);
-    renderNavCounts(stats);
+    renderAgentSummary(stats);
+    setText('[data-nav-count="open"]', tasks.filter((t) => t.status !== 'done').length);
     for (const id of STATS_REGIONS) KavUI.init($(id));
     await loadLatestActivity();
   }
@@ -778,7 +707,6 @@
       tasks = await api('GET', '/api/tasks?scope=all');
       renderSourceOptions();
       renderBoard();
-      renderIssues();
       await loadStats();
       if (currentView === 'activity') await loadActivity();
       error.hidden = true;
@@ -822,9 +750,14 @@
       : status.running ? '初回の同期をしています…' : `${minutes}分ごとに自動で同期します`);
     errorBox.hidden = !status.last_error;
     setText('[data-sync-error]', status.last_error ? ` ${status.last_error}` : '');
-    setText('#sidebar-sync', status.running ? '同期中…'
+    const indicator = $('#header-sync');
+    indicator.classList.toggle('sync-failed', Boolean(status.last_error));
+    indicator.title = status.last_error
+      ? `GitHub の最終同期に失敗: ${status.last_error}`
+      : `GitHub と${minutes}分ごとに自動で同期します`;
+    setText('[data-sync-summary]', status.running ? '同期中…'
       : status.last_error ? '同期エラー'
-      : finished ? `最終同期: ${finished}` : '同期待ち');
+      : finished ? `同期: ${finished}` : '同期待ち');
   }
 
   async function loadSync() {
@@ -837,7 +770,8 @@
       }
       lastSyncFinishedAt = status.last_finished_at;
     } catch {
-      setText('#sidebar-sync', '同期の状態を取得できません');
+      setText('[data-sync-summary]', '同期: 不明');
+      $('#header-sync').title = '同期の状態を取得できません';
     }
   }
 
@@ -1344,13 +1278,14 @@
     for (const view of document.querySelectorAll('[data-view]')) {
       view.hidden = view.dataset.view !== currentView;
     }
-    for (const link of document.querySelectorAll('#sidebar-nav a')) {
+    for (const link of document.querySelectorAll('[data-nav]')) {
       if (link.dataset.nav === currentView) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     }
     if (currentView === 'activity' && previousView !== 'activity') {
       loadActivity().catch((err) => notifyError('アクティビティを読み込めませんでした', err));
     }
+    $('#activity-back').hidden = currentView !== 'activity';
     setText('#view-title', VIEWS[currentView].title);
     setText('#view-description', VIEWS[currentView].description);
     document.title = `${VIEWS[currentView].title} · task-tool`;
@@ -1374,11 +1309,15 @@
       openFamily(Number(task[1]));
       return;
     }
+    const legacy = { '#/github': '#/board', '#/agents': '#/settings' };
+    const agentRedirect = location.hash === '#/agents';
+    if (location.hash in legacy) history.replaceState(null, '', legacy[location.hash]);
     const view = /^#\/([a-z]+)$/.exec(location.hash);
     if (familyDialog.open) KavUI.hide('#family-dialog');
     showView(view ? view[1] : 'overview');
     if (view && !(view[1] in VIEWS)) history.replaceState(null, '', '#/overview');
     window.scrollTo(0, 0);
+    if (agentRedirect) $('#agent-guide').focus();
   }
 
   // ---- Navigation and forms ----------------------------------------------

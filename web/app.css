@@ -10,8 +10,9 @@
 }
 
 
-/* Full-page shell: the sidebar stays fixed while the dashboard scrolls. */
+/* Full-width dashboard shell. */
 body.ui-app > .app-shell {
+  grid-template-columns: minmax(0, 1fr);
   min-height: 100vh;
   min-height: 100dvh;
   border: 0;
@@ -20,38 +21,32 @@ body.ui-app > .app-shell {
   overflow: visible;
 }
 
-@media (width >= 768px) {
-  body.ui-app > .app-shell > .app-sidebar {
-    position: sticky;
-    top: 0;
-    align-self: start;
-    height: 100vh;
-    height: 100dvh;
-    overflow-y: auto;
-    border-radius: 0;
-  }
+/* Every page heading is one glass panel, the same on every page. On tablets and up it stays at
+   the top while the page scrolls. Board and activity also pin their filter bar right under it,
+   and the two read as one panel: the heading is its top half (no bottom border, square bottom
+   corners) and the bar its bottom half, with no gap for cards to show through. Phones keep the
+   bar in the flow, where the wrapped bar would cover most of the screen. */
+.app-content .ui-page-header {
+  padding: var(--space-4);
+  border: 1px solid var(--ui-glass-highlight, var(--bs-border-color));
+  border-radius: var(--bs-border-radius);
+  background-color: var(--ui-theme-surface, var(--bs-body-bg));
+  background-image: linear-gradient(135deg, var(--ui-glass-sheen, transparent), transparent 60%);
+  -webkit-backdrop-filter: var(--ui-theme-blur, none);
+  backdrop-filter: var(--ui-theme-blur, none);
 }
-
-/* Board and activity are long pages: their heading and filter bar stay at the top while the
-   list scrolls underneath. Pinned, the two read as one panel: the heading is its top half
-   (same surface, padding and border as the bar) and the bar its bottom half, with no gap for
-   cards to show through. Phones keep them in the flow, where the wrapped bar would cover most
-   of the screen. */
 @media (width >= 768px) {
-  .app-content:is([data-current-view="board"], [data-current-view="activity"]) .ui-page-header {
+  .app-content .ui-page-header {
     position: sticky;
     top: 0;
     z-index: 20;
+  }
+  .app-content:is([data-current-view="board"], [data-current-view="activity"]) .ui-page-header {
     /* Cancel the page stack's gap so the bar joins the heading. */
     margin-block-end: calc(-1 * var(--space-4));
-    padding: var(--space-4) var(--space-4) var(--space-3);
-    border: 1px solid var(--ui-glass-highlight, var(--bs-border-color));
+    padding-block-end: var(--space-3);
     border-block-end: 0;
     border-radius: var(--bs-border-radius) var(--bs-border-radius) 0 0;
-    background-color: var(--ui-theme-surface, var(--bs-body-bg));
-    background-image: linear-gradient(135deg, var(--ui-glass-sheen, transparent), transparent 60%);
-    -webkit-backdrop-filter: var(--ui-theme-blur, none);
-    backdrop-filter: var(--ui-theme-blur, none);
   }
   .app-content:is([data-current-view="board"], [data-current-view="activity"]) [data-view] > .ui-toolbar {
     position: sticky;
@@ -512,3 +507,20 @@ body.ui-app > .app-shell {
   cursor: default;
 }
 .task-details .form-control[readonly]:focus { box-shadow: none; }
+
+/* Route links use Kav-UI navigation, with touch targets at every viewport size. */
+.header-nav { width: fit-content; margin-block-end: var(--space-3); }
+.header-nav .nav-link { min-height: 44px; min-width: 44px; }
+.header-nav .nav-link:focus-visible,
+.ui-page-actions a:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
+.header-sync { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--bs-secondary-color); }
+.header-sync.sync-failed { color: var(--bs-danger); }
+.ui-page-actions [aria-current="page"] { color: var(--bs-primary); background: var(--bs-primary-bg-subtle); }
+@media (width < 768px) {
+  .app-content .ui-page-header { gap: var(--space-3); }
+  .app-content .ui-page-heading { flex-basis: 100%; }
+  .ui-page-actions { width: 100%; }
+  .ui-page-actions .btn { min-height: 44px; min-width: 44px; }
+  .header-sync { flex-basis: 100%; }
+  .ui-page-actions .header-relax { display: none; }
+}

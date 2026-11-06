@@ -11,34 +11,23 @@
   <script defer src="app.js"></script>
 </head>
 <body class="ui-app" data-ui-theme="glassmorphism" data-ui-theme-persist>
-  <div class="app-shell" id="workspace" data-ui-sidebar data-ui-sidebar-mobile="drawer" data-ui-sidebar-tablet="expanded" data-ui-sidebar-desktop="expanded" data-ui-sidebar-side="start">
-    <aside class="app-sidebar" aria-label="メニュー">
-      <h2 class="app-sidebar-title">task-tool</h2>
-      <nav class="app-sidebar-group" id="sidebar-nav" aria-label="画面の切り替え">
-        <a href="#/overview" data-nav="overview" aria-current="page"><span class="sidebar-icon" icon="mdi-view-dashboard" aria-hidden="true"></span><span class="sidebar-label">概要</span><span class="sidebar-meta" data-nav-count="working" title="AIが作業中">0</span></a>
-        <a href="#/board" data-nav="board"><span class="sidebar-icon" icon="mdi-view-grid" aria-hidden="true"></span><span class="sidebar-label">ボード</span><span class="sidebar-meta" data-nav-count="open">0</span></a>
-        <a href="#/github" data-nav="github"><span class="sidebar-icon" icon="mdi-link" aria-hidden="true"></span><span class="sidebar-label">GitHub</span><span class="sidebar-meta" data-nav-count="github">0</span></a>
-        <a href="#/activity" data-nav="activity"><span class="sidebar-icon" icon="mdi-clock-outline" aria-hidden="true"></span><span class="sidebar-label">アクティビティ</span></a>
-        <a href="#/agents" data-nav="agents"><span class="sidebar-icon" icon="mdi-message-text-outline" aria-hidden="true"></span><span class="sidebar-label">AIエージェント</span><span class="sidebar-meta" data-nav-count="agents">0</span></a>
-        <a href="#/settings" data-nav="settings"><span class="sidebar-icon" icon="mdi-cog" aria-hidden="true"></span><span class="sidebar-label">設定</span></a>
-        <a href="/relax.html"><span class="sidebar-icon" icon="mdi-image" aria-hidden="true"></span><span class="sidebar-label">背景を眺める</span></a>
-      </nav>
-      <div class="app-sidebar-footer ui-stack sp-gap-1">
-        <span class="fx fx-items-center sp-gap-2"><span icon="mdi-refresh" aria-hidden="true"></span>GitHubと自動で同期</span>
-        <span id="sidebar-sync" role="status">確認中…</span>
-      </div>
-    </aside>
-
+  <div class="app-shell" id="workspace">
     <main class="app-content">
       <div class="ui-stack">
         <header class="ui-page-header">
           <div class="ui-page-heading">
-            <p class="ui-page-eyebrow">task-tool</p>
+            <nav class="nav nav-underline header-nav" id="header-nav" aria-label="画面の切り替え">
+              <a class="nav-link" href="#/overview" data-nav="overview" aria-current="page">概要 <span class="nav-meta" data-nav-count="working" title="AIが作業中">0</span></a>
+              <a class="nav-link" href="#/board" data-nav="board">ボード <span class="nav-meta" data-nav-count="open" title="未完了のタスク">0</span></a>
+            </nav>
             <h1 class="ui-page-title" id="view-title">概要</h1>
             <p class="ui-page-description" id="view-description">タスクの状況をまとめて確認できます。</p>
           </div>
           <div class="ui-page-actions">
-            <button type="button" class="btn btn-ghost-secondary btn-icon-only ui-hidden mobile:ui-inline-flex" data-ui-toggle="sidebar-responsive" data-ui-target="#workspace" aria-label="メニューを開く"><span icon="mdi-menu" aria-hidden="true"></span></button>
+            <a href="#/overview" class="type-caption" id="activity-back" hidden>概要に戻る</a>
+            <span class="header-sync type-caption" id="header-sync" role="status" title="GitHub の同期状態"><span icon="mdi-refresh" aria-hidden="true"></span><span data-sync-summary>確認中…</span></span>
+            <a class="btn btn-ghost-secondary btn-icon-only header-relax" href="/relax.html" aria-label="背景を眺める" title="背景を眺める"><span icon="mdi-image" aria-hidden="true"></span></a>
+            <a class="btn btn-ghost-secondary btn-icon-only" href="#/settings" data-nav="settings" aria-label="設定" title="設定"><span icon="mdi-cog" aria-hidden="true"></span></a>
             <button class="btn btn-ghost-secondary btn-icon-only" type="button" data-ui-toggle="theme" data-ui-theme-icon icon="mdi-weather-night" aria-label="ダークに切替" title="ダークに切替"></button>
             <button class="btn btn-primary" type="button" data-action="new-task" icon="mdi-plus">新しいタスク</button>
             <button class="btn btn-ghost-secondary btn-icon-only" type="button" data-action="reload" aria-label="最新の状態に更新"><span icon="mdi-refresh" aria-hidden="true"></span></button>
@@ -86,7 +75,7 @@
           <div class="fx-grid fx-gap-4">
             <section class="fx-col-7 tablet:fx-col-12 mobile:fx-col-12 ui-card" aria-labelledby="working-title">
               <div class="ui-card-header"><h2 class="ui-card-title" id="working-title">AIが作業中</h2></div>
-              <div class="ui-card-body" id="working-list"></div>
+              <div class="ui-card-body ui-stack"><div id="working-list"></div><details><summary>エージェントごとの状況</summary><div class="ui-list-group ui-list-group-flush" id="agent-summary"></div></details></div>
             </section>
             <section class="fx-col-5 tablet:fx-col-12 mobile:fx-col-12 ui-card" aria-labelledby="personal-title">
               <div class="ui-card-header"><h2 class="ui-card-title" id="personal-title">自分の未着手</h2></div>
@@ -191,58 +180,6 @@
           </div>
         </section>
 
-<section class="ui-stack" data-view="github" aria-label="GitHub" hidden>
-          <div class="fx-grid fx-gap-4">
-            <section class="fx-col-4 tablet:fx-col-12 mobile:fx-col-12 ui-card" aria-labelledby="sync-title">
-              <div class="ui-card-header fx fx-justify-between fx-items-center sp-gap-3">
-                <h2 class="ui-card-title sp-m-0 fx-flex-1 fx-min-0 type-truncate" id="sync-title">自動同期</h2>
-                <span class="badge badge-neutral fx-shrink-0" id="sync-badge">同期を確認中</span>
-              </div>
-              <div class="ui-card-body ui-stack">
-                <p class="type-caption type-color-muted sp-m-0">自分に割り当てられたIssueを、全リポジトリから5分ごとに自動で取り込みます。</p>
-                <p class="type-caption sp-m-0" id="sync-detail" role="status"></p>
-                <div class="alert alert-warning" id="sync-error" hidden><p class="sp-m-0">GitHubと同期できませんでした。gh コマンドのログイン状態を確認してください。<span class="type-caption" data-sync-error></span></p></div>
-              </div>
-            </section>
-            <section class="fx-col-8 tablet:fx-col-12 mobile:fx-col-12 ui-card" aria-labelledby="repo-title">
-              <div class="ui-card-header"><h2 class="ui-card-title" id="repo-title">リポジトリ別</h2></div>
-              <div class="ui-card-body">
-                <figure class="ui-chart" id="repo-chart" data-ui-chart="bar"><figcaption class="visually-hidden">リポジトリごとの未完了・完了の件数</figcaption></figure>
-              </div>
-            </section>
-          </div>
-          <section class="ui-card" aria-labelledby="issues-title">
-            <div class="ui-card-header"><h2 class="ui-card-title" id="issues-title">Issue の一覧</h2></div>
-            <div class="ui-card-body">
-              <div class="ui-data-table" id="issue-table" data-ui-data-table data-ui-page-size="20">
-                <div class="ui-data-table-toolbar" data-ui-table-controls>
-                  <label class="ui-data-table-search">Issueを検索<input class="form-control" type="search" data-ui-table-search placeholder="題名・リポジトリ・状態" autocomplete="off"></label>
-                  <div class="ui-data-table-meta">
-                    <p class="type-caption sp-m-0" data-ui-table-status role="status"></p>
-                    <nav class="ui-data-table-pagination" aria-label="Issueのページ送り">
-                      <button class="btn btn-outline-secondary btn-sm" type="button" data-ui-table-prev>前へ</button>
-                      <span data-ui-table-page-status></span>
-                      <button class="btn btn-outline-secondary btn-sm" type="button" data-ui-table-next>次へ</button>
-                    </nav>
-                  </div>
-                </div>
-                <div class="ui-table-scroll" tabindex="0" role="region" aria-label="Issueの一覧（横スクロール可能）">
-                  <table class="table table-hover">
-                    <caption class="visually-hidden">同期したIssueの一覧</caption>
-                    <thead><tr>
-                      <th scope="col"><button class="ui-data-table-sort" type="button" data-ui-table-sort="text">リポジトリ</button></th>
-                      <th scope="col"><button class="ui-data-table-sort" type="button" data-ui-table-sort="text">題名</button></th>
-                      <th scope="col"><button class="ui-data-table-sort" type="button" data-ui-table-sort="text">状態</button></th>
-                      <th scope="col"><button class="ui-data-table-sort" type="button" data-ui-table-sort="date">更新</button></th>
-                    </tr></thead>
-                    <tbody id="issue-rows"></tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </section>
-        </section>
-
         <section class="ui-stack" data-view="activity" aria-label="アクティビティ" hidden>
           <div class="ui-toolbar" role="group" aria-label="アクティビティの絞り込み">
             <div class="ui-toolbar-group">
@@ -268,22 +205,26 @@
           </div>
         </section>
 
-        <section class="fx-grid fx-gap-4" data-view="agents" aria-label="AIエージェント" hidden>
-          <section class="fx-col-12" aria-labelledby="agent-cards-title">
-            <h2 class="visually-hidden" id="agent-cards-title">エージェントごとの状況</h2>
-            <div class="ui-page-grid" id="agent-cards"></div>
-          </section>
-          <section class="fx-col-5 tablet:fx-col-12 mobile:fx-col-12 ui-card" aria-labelledby="creators-title">
-            <div class="ui-card-header"><h2 class="ui-card-title" id="creators-title">作成者ごとのタスク数</h2></div>
+        <section class="fx-grid fx-gap-4" data-view="settings" aria-label="設定" hidden>
+          <section class="fx-col-12 ui-card" aria-labelledby="sync-title">
+            <div class="ui-card-header fx fx-justify-between fx-items-center sp-gap-3">
+              <h2 class="ui-card-title sp-m-0 fx-flex-1 fx-min-0 type-truncate" id="sync-title">GitHub との同期</h2>
+              <span class="badge badge-neutral fx-shrink-0" id="sync-badge">同期を確認中</span>
+            </div>
             <div class="ui-card-body ui-stack">
-              <p class="type-body sp-m-0">MCPで接続したエージェントが作ったタスクには、エージェントの名前が記録されます。</p>
-              <div class="ui-list-group" id="creator-list"></div>
+              <p class="type-caption type-color-muted sp-m-0">自分に割り当てられたIssueを、全リポジトリから5分ごとに自動で取り込みます。</p>
+              <p class="type-caption sp-m-0" id="sync-detail" role="status"></p>
+              <div class="alert alert-warning" id="sync-error" hidden><p class="sp-m-0">GitHubと同期できませんでした。gh コマンドのログイン状態を確認してください。<span class="type-caption" data-sync-error></span></p></div>
             </div>
           </section>
-          <section class="fx-col-7 tablet:fx-col-12 mobile:fx-col-12 ui-card" aria-labelledby="mcp-title">
-            <div class="ui-card-header"><h2 class="ui-card-title" id="mcp-title">MCPで接続する</h2></div>
+          <section class="fx-col-12 ui-card" id="agent-guide" tabindex="-1" aria-labelledby="mcp-title">
+            <div class="ui-card-header"><h2 class="ui-card-title" id="mcp-title">AI エージェントから使う</h2></div>
             <div class="ui-card-body ui-stack">
-              <p class="type-body sp-m-0">普段使うエージェントに task-tool を MCP サーバーとして登録し、会話で「#12をやって」と依頼します。AIの経過報告と結果を、この画面で確認できます。Claude Code では次のコマンドで登録します。</p>
+              <p class="type-body sp-m-0">会話で <code>/task-tool 12</code>（Claude Code）、<code>$task-tool 12</code>（Codex）、または「task-tool の #12 をやって」と依頼します。task-tool スキルの手順で、AI が CLI を使って作業を進めます。</p>
+              <p class="type-caption sp-m-0">Codex は <code>--as codex</code> または <code>TASK_TOOL_ACTOR=codex</code> で実行者を記録します。</p>
+              <p class="type-caption type-color-muted sp-m-0">タスクを登録するだけでは作業は始まりません。AI の完了報告は「確認中」になり、最後にあなたが確認します。</p>
+              <details><summary>MCP で接続する</summary>
+              <p class="type-caption">MCP サーバーとして登録する場合は、次のコマンドを使います。</p>
               <div class="ui-clipboard">
                 <div class="ui-clipboard-row">
                   <code class="ui-clipboard-value" id="mcp-command">task-tool mcp</code>
@@ -291,11 +232,9 @@
                 </div>
                 <p class="ui-copy-status" data-ui-copy-status role="status"></p>
               </div>
-              <p class="type-caption type-color-muted sp-m-0">タスクを登録するだけでは実行されません。作業を始めるには会話で依頼してください。</p>
+              </details>
             </div>
           </section>
-        </section>
-        <section class="fx-grid fx-gap-4" data-view="settings" aria-label="設定" hidden>
           <section class="fx-col-12 ui-card" aria-labelledby="color-mode-title">
             <div class="ui-card-header"><h2 class="ui-card-title" id="color-mode-title">表示モード</h2></div>
             <div class="ui-card-body ui-stack">

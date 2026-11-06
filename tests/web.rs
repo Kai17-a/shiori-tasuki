@@ -131,6 +131,27 @@ async fn serves_the_admin_page_and_kav_ui_assets() {
     let (status, html) = app.send("GET", "/", None).await;
     assert_eq!(status, StatusCode::OK);
     assert!(html.as_str().unwrap().contains("vendor/kav-ui/css/ui.css"));
+    let html = html.as_str().unwrap();
+    for view in ["overview", "board", "settings"] {
+        assert!(html.contains(&format!("data-nav=\"{view}\"")));
+    }
+    for view in ["github", "agents", "activity"] {
+        assert!(!html.contains(&format!("data-nav=\"{view}\"")));
+    }
+    for view in ["github", "agents"] {
+        assert!(!html.contains(&format!("data-view=\"{view}\"")));
+    }
+    let settings = html.split("data-view=\"settings\"").nth(1).unwrap();
+    assert!(settings.contains("id=\"sync-badge\""));
+    assert!(settings.contains("id=\"agent-guide\""));
+    assert!(settings.contains("<details><summary>MCP で接続する</summary>"));
+    assert!(html.contains("id=\"activity-back\""));
+    assert!(!html.contains("<aside"));
+    assert!(!html.contains("data-ui-sidebar"));
+    assert!(html.contains("id=\"header-nav\""));
+    assert!(html.contains("id=\"header-sync\""));
+    assert!(html.contains("aria-label=\"設定\""));
+    assert!(!html.contains("creator-list"));
 
     let (status, _) = app.send("GET", "/vendor/kav-ui/js/ui.js", None).await;
     assert_eq!(status, StatusCode::OK);
