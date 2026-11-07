@@ -1,4 +1,4 @@
-use task_manager::{Actor, NewSubtask, NewTask, Scope, Status, Store, StoreError, TaskUpdate};
+use shiori_tasuki::{Actor, NewSubtask, NewTask, Scope, Status, Store, StoreError, TaskUpdate};
 
 fn store() -> Store {
     Store::open_in_memory().expect("in-memory store opens")
@@ -250,7 +250,7 @@ fn persists_to_a_file() {
     assert_eq!(reopened.get(id).unwrap().unwrap().title, "Persisted");
 }
 
-fn set_status(store: &Store, id: i64, status: Status) -> task_manager::Task {
+fn set_status(store: &Store, id: i64, status: Status) -> shiori_tasuki::Task {
     store
         .update(
             id,
@@ -363,7 +363,7 @@ fn summarises_tasks_for_the_dashboard() {
     store
         .link_github(
             linked.id,
-            &task_manager::GithubLink {
+            &shiori_tasuki::GithubLink {
                 repo: "o/r".into(),
                 number: 1,
                 url: "https://github.com/o/r/issues/1".into(),
@@ -446,7 +446,7 @@ fn github_content_is_owned_by_source_even_for_published_local_tasks() {
     let task = store
         .link_github(
             task.id,
-            &task_manager::GithubLink {
+            &shiori_tasuki::GithubLink {
                 repo: "o/r".into(),
                 number: 1,
                 url: "https://github.com/o/r/issues/1".into(),

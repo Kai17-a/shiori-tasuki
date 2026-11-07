@@ -1,19 +1,19 @@
-# task-manager
+# shiori-tasuki
 
-自分の作業を整理するためのタスク管理アプリです。ダッシュボードやCLIで整理し、会話でAIに依頼すると、エージェントがMCPで経過と結果を報告します。タスクを登録しただけでは実行されません。1 つのバイナリで、次の 4 つの使い方ができます。
+自分の作業を整理するためのタスク管理アプリです。ダッシュボードやCLIで整理し、会話でAIに依頼すると、エージェントがMCPで経過と結果を報告します。タスクを登録しただけでは実行されません。コマンドは `stk` です。1 つのバイナリで、次の 4 つの使い方ができます。
 
 - ブラウザの管理画面（ダッシュボード）
 - AI エージェント向けの MCP サーバー（stdio）
 - GitHub Issue の自動同期（自分のリポジトリで自分が作った Issue と、自分が担当の Issue）と Issue の作成（`gh` コマンドを使用）
 - コマンドラインからの操作
 
-データは SQLite に保存します。保存先は `--db` → `TASK_MANAGER_DB` → `$XDG_DATA_HOME/task-manager/tasks.db` → `$HOME/.local/share/task-manager/tasks.db` の順に決まります（未設定・空の XDG_DATA_HOME はスキップ）。親フォルダは初回利用時に作成します。同じ DB を使うすべてのプロセスに、同じ保存先を指定してください。
+データは SQLite に保存します。保存先は `--db` → `SHIORI_TASUKI_DB` → `$XDG_DATA_HOME/shiori-tasuki/tasks.db` → `$HOME/.local/share/shiori-tasuki/tasks.db` の順に決まります（未設定・空の XDG_DATA_HOME はスキップ）。親フォルダは初回利用時に作成します。同じ DB を使うすべてのプロセスに、同じ保存先を指定してください。
 
 ## ビルド
 
 ```sh
 cargo build --release
-cargo install --path .  # task-manager を PATH に追加
+cargo install --path .  # stk コマンドを PATH に追加
 ```
 
 管理画面の HTML・CSS・JS はバイナリに埋め込まれます。実行時に `web/` フォルダは不要です。
@@ -21,7 +21,7 @@ cargo install --path .  # task-manager を PATH に追加
 ## 管理画面
 
 ```sh
-task-manager serve        # http://127.0.0.1:7878/
+stk serve        # http://127.0.0.1:7878/
 ```
 
 ダッシュボードでタスクを作成・編集し、ボードで状態を整理します。AIに任せたい作業は、Claude CodeやT3 Codeの会話で「#12をやって」と依頼してください。AIの着手・メモ・完了報告はMCP経由で記録され、ダッシュボードに表示されます。サーバーはエージェントを起動しません。
@@ -63,7 +63,7 @@ API にはログインがありません。既定では 127.0.0.1 で待ち受�
 Claude Code に登録する例です。`--db` には、ダッシュボードと同じ DB を絶対パスで指定します（省略すると、上記の共通保存先を使います）。
 
 ```sh
-claude mcp add --scope user task-manager -- /path/to/task-manager --db /path/to/tasks.db --repo owner/name mcp
+claude mcp add --scope user shiori-tasuki -- /path/to/stk --db /path/to/tasks.db --repo owner/name mcp
 ```
 
 `--scope user` にすると、どのフォルダで起動したセッションからも使えます。既定の local スコープは、登録したフォルダでしか使えません。
@@ -71,8 +71,8 @@ claude mcp add --scope user task-manager -- /path/to/task-manager --db /path/to/
 **T3 Code から使う場合**: T3 Code が起動する Claude Code は `CLAUDE_CONFIG_DIR=~/.claude` で動くため、設定ファイルとして `~/.claude/.claude.json` を読みます。普通のターミナルで登録すると `~/.claude.json` に書かれるので、T3 Code のセッションからは見えません。次のように、T3 Code と同じ設定先に登録してください。
 
 ```sh
-CLAUDE_CONFIG_DIR=~/.claude claude mcp add --scope user task-manager -- /path/to/task-manager --db /path/to/tasks.db mcp
-CLAUDE_CONFIG_DIR=~/.claude claude mcp list   # task-manager が ✔ Connected になれば完了
+CLAUDE_CONFIG_DIR=~/.claude claude mcp add --scope user shiori-tasuki -- /path/to/stk --db /path/to/tasks.db mcp
+CLAUDE_CONFIG_DIR=~/.claude claude mcp list   # shiori-tasuki が ✔ Connected になれば完了
 ```
 
 登録後は、新しいセッションを始めると使えます。実行中のセッションには反映されません。
@@ -102,11 +102,11 @@ AI は着手前に履歴の差し戻し理由を読み、報告には実施内�
 ユーザーが会話で承認や修正を指示したときは、AI がそれを記録できます（MCP の `record_user_review`、CLI では AI の名前での `approve` / `reject`）。画面で操作し直す必要はありません。AI はユーザーの言葉を引用して記録し、自分の判断では使いません。履歴には記録した AI の名前とユーザーの言葉が残り、画面では「会話での承認を claude-code が記録」のように、自分で押した承認と区別して表示します。差し戻したときは、AI がそのまま着手し直して修正します。
 
 ```sh
-task-manager --as codex done 12 --summary '実装・検証結果' --link https://example.com/pull/12
-task-manager --as codex link 12 https://example.com/results --label '検証結果'
-task-manager --as user approve 12 --comment '確認しました'
-task-manager --as user reject 12 --reason '境界条件のテストを追加してください'
-task-manager --as codex approve 12 --comment 'OK、これで完了で'   # 会話での承認を AI が記録
+stk --as codex done 12 --summary '実装・検証結果' --link https://example.com/pull/12
+stk --as codex link 12 https://example.com/results --label '検証結果'
+stk --as user approve 12 --comment '確認しました'
+stk --as user reject 12 --reason '境界条件のテストを追加してください'
+stk --as codex approve 12 --comment 'OK、これで完了で'   # 会話での承認を AI が記録
 ```
 
 `approve --comment` はユーザーには任意、AI にはユーザーの言葉として必須です。`reject --reason` は必須で、どちらも `-` で標準入力を読めます。差し戻しは未着手に戻して担当を解除し、理由を履歴に残します。親はすべての子が完了したときだけ自動完了し、確認中の子がある間は開いたままです。確認中は停滞に数えません。
@@ -130,7 +130,7 @@ Gitリポジトリでは着手時と報告・中止時のブランチとHEAD、�
 - 他の人が立てて、自分が担当でない Issue は取り込みません。公開リポジトリには誰でも Issue を立てられ、取り込んだ本文はタスクとして AI エージェントにも渡るためです。
 - ログイン名は `gh api user` で調べます。それぞれの検索で、更新の新しい順に、GitHub の検索 API の上限の 1000 件まで取得します。
 - 条件から外れた Issue（担当を外れた、リポジトリをアーカイブした など）のタスクは削除せず、そのまま残します。
-- **取り込まないリポジトリ**：設定の「GitHub との同期」で取り込み済みのリポジトリから選ぶか、`task-manager gh ignore add OWNER/NAME` で追加すると、そのリポジトリの Issue は取り込みません。追加したときに、そのリポジトリから取り込み済みのタスク（子タスクを含む）を削除します。CLI では、削除するタスクがあると `--yes` が必要です。`gh ignore remove` で外すと次の同期で取り込み直し（設定の画面で外したときは、すぐに同期します）、`gh ignore list` で一覧を表示します。リポジトリ名の大文字・小文字は区別しません。
+- **取り込まないリポジトリ**：設定の「GitHub との同期」で取り込み済みのリポジトリから選ぶか、`stk gh ignore add OWNER/NAME` で追加すると、そのリポジトリの Issue は取り込みません。追加したときに、そのリポジトリから取り込み済みのタスク（子タスクを含む）を削除します。CLI では、削除するタスクがあると `--yes` が必要です。`gh ignore remove` で外すと次の同期で取り込み直し（設定の画面で外したときは、すぐに同期します）、`gh ignore list` で一覧を表示します。リポジトリ名の大文字・小文字は区別しません。
 
 取得した Issue は、次のようにタスクへ反映します。
 
@@ -146,46 +146,46 @@ Gitリポジトリでは着手時と報告・中止時のブランチとHEAD、�
 ### Issue の作成
 
 ```sh
-task-manager gh push 12 owner/name
+stk gh push 12 owner/name
 ```
 
-- 作成先のリポジトリを指定します（`--repo` / `TASK_MANAGER_REPO` で既定値を設定できます）。MCP の `push_task_to_github` からも作成できます。
+- 作成先のリポジトリを指定します（`--repo` / `SHIORI_TASUKI_REPO` で既定値を設定できます）。MCP の `push_task_to_github` からも作成できます。
 - 担当者は自分になるので、自動同期の対象にも入ります。説明の後に、子タスクをチェックリストとして入れます。同じタスクから 2 回は作成できません。
 - タスクを完了にしても、GitHub の Issue は自動ではクローズしません。
 
 ## エージェント向け CLI
 
-MCP と CLI は同じデータを扱います。ユーザーに依頼されたタスクだけを扱い、履歴を確認してから着手し、経過・結果を記録します。`task-manager guide` で MCP と共通の手順を表示します。
+MCP と CLI は同じデータを扱います。ユーザーに依頼されたタスクだけを扱い、履歴を確認してから着手し、経過・結果を記録します。`stk guide` で MCP と共通の手順を表示します。
 
 ```sh
-export TASK_MANAGER_ACTOR=codex  # または各コマンドに --as codex
-task-manager list --status todo --json id,title
-task-manager view 12
-task-manager start 12
-task-manager note 12 - <<'NOTE'
+export SHIORI_TASUKI_ACTOR=codex  # または各コマンドに --as codex
+stk list --status todo --json id,title
+stk view 12
+stk start 12
+stk note 12 - <<'NOTE'
 実装を進めています。
 次に検証します。
 NOTE
-task-manager done 12 --summary '実装し、cargo test で検証しました'
+stk done 12 --summary '実装し、cargo test で検証しました'
 ```
 
-実行者は `--as NAME` → `TASK_MANAGER_ACTOR` → 自動判定の順です。`CLAUDECODE=1` なら `claude-code`、それ以外は `user` です。Codex は自動判定しないので、`--as codex` または `TASK_MANAGER_ACTOR=codex` を指定してください。着手時の担当者と、作成・編集・メモ・分割・完了・失敗の履歴に実行者を記録します。
+実行者は `--as NAME` → `SHIORI_TASUKI_ACTOR` → 自動判定の順です。`CLAUDECODE=1` なら `claude-code`、それ以外は `user` です。Codex は自動判定しないので、`--as codex` または `SHIORI_TASUKI_ACTOR=codex` を指定してください。着手時の担当者と、作成・編集・メモ・分割・完了・失敗の履歴に実行者を記録します。
 
 ```sh
-task-manager create '認証機能を追加' -b 'GitHub OAuth でログイン'
-task-manager create 'コールバックを実装' --parent 1
-task-manager split 1 '実装する' '検証する'
-task-manager list --all --status todo --status review --assignee codex --limit 50
-task-manager list --all --repo owner/name --search OAuth
-task-manager list --all --local  # 最上位の親に GitHub リンクがないタスクの家族
-task-manager list --parent 1
-task-manager view 1 --history 40 --json task,subtasks,history,sessions
-task-manager edit 1 --title '認証を実装' --body '完了条件' --assignee ''
-task-manager fail 2 --reason '依存する API が未完成'  # todo に戻し担当を解除
-task-manager activity --task 1 --limit 30 --json
-task-manager stats --json
-task-manager hide 1     # 子タスクごと非表示。削除はしない（unhide で戻す、list --hidden で一覧）
-task-manager gh push 1 owner/name --json
+stk create '認証機能を追加' -b 'GitHub OAuth でログイン'
+stk create 'コールバックを実装' --parent 1
+stk split 1 '実装する' '検証する'
+stk list --all --status todo --status review --assignee codex --limit 50
+stk list --all --repo owner/name --search OAuth
+stk list --all --local  # 最上位の親に GitHub リンクがないタスクの家族
+stk list --parent 1
+stk view 1 --history 40 --json task,subtasks,history,sessions
+stk edit 1 --title '認証を実装' --body '完了条件' --assignee ''
+stk fail 2 --reason '依存する API が未完成'  # todo に戻し担当を解除
+stk activity --task 1 --limit 30 --json
+stk stats --json
+stk hide 1     # 子タスクごと非表示。削除はしない（unhide で戻す、list --hidden で一覧）
+stk gh push 1 owner/name --json
 ```
 
 `split` はタイトルのみを受け取り、説明は空で作成します。後から `edit --body` で説明を追加できます。トップレベルの `create` は現在のフォルダを workdir とし、子タスクは親から引き継ぎます。`--workdir` で明示できます。すべての子がユーザーの承認で `done` になると祖先も完了します。GitHub と連携したタスクの題名・説明は CLI から編集できますが、次の同期で上書きされる旨を stderr に警告します。
@@ -197,10 +197,10 @@ task-manager gh push 1 owner/name --json
 CLAUDE.md / AGENTS.md に貼る例:
 
 ```text
-ユーザーのタスク管理には PATH 上の task-manager を使う。
-ユーザーが依頼したタスクだけを扱い、task-manager guide に従う。
+ユーザーのタスク管理には PATH 上の stk（shiori-tasuki）を使う。
+ユーザーが依頼したタスクだけを扱い、stk guide に従う。
 着手前に view ID で内容・workdir・履歴（過去の差し戻し理由を含む）を読み、start ID で担当を記録する。
-Codex は TASK_MANAGER_ACTOR=codex を設定する（Claude Code は自動判定）。
+Codex は SHIORI_TASUKI_ACTOR=codex を設定する（Claude Code は自動判定）。
 経過は note ID、完了は done ID --summary、未完了は fail ID --reason で報告する。
 構造化出力には --json を使い、長い本文は - で標準入力から渡す。
 ```

@@ -1,5 +1,5 @@
-use task_manager::Store;
-use task_manager::settings::{
+use shiori_tasuki::Store;
+use shiori_tasuki::settings::{
     BackgroundPosition, BackgroundSettings, BackgroundSize, ImageError, MAX_IMAGE_BYTES,
     sniff_image_type,
 };

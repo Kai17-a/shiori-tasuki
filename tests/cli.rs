@@ -10,11 +10,11 @@ impl Cli {
         Self(tempfile::tempdir().expect("temporary folder is created"))
     }
     fn command(&self) -> Command {
-        let mut c = Command::new(env!("CARGO_BIN_EXE_task-manager"));
+        let mut c = Command::new(env!("CARGO_BIN_EXE_stk"));
         c.current_dir(self.0.path());
         c.env_remove("CLAUDECODE")
-            .env_remove("TASK_MANAGER_ACTOR")
-            .env_remove("TASK_MANAGER_REPO");
+            .env_remove("SHIORI_TASUKI_ACTOR")
+            .env_remove("SHIORI_TASUKI_REPO");
         for (key, _) in std::env::vars_os() {
             if key.to_string_lossy().starts_with("CODEX_")
                 || key.to_string_lossy().starts_with("CLAUDE_")
@@ -22,7 +22,7 @@ impl Cli {
                 c.env_remove(key);
             }
         }
-        c.env("TASK_MANAGER_DB", self.0.path().join("tasks.db"))
+        c.env("SHIORI_TASUKI_DB", self.0.path().join("tasks.db"))
             .env("HOME", self.0.path())
             .env("XDG_DATA_HOME", self.0.path().join("data"));
         c
@@ -31,7 +31,7 @@ impl Cli {
         self.command()
             .args(args)
             .output()
-            .expect("task-manager runs")
+            .expect("shiori-tasuki runs")
     }
     fn json(&self, args: &[&str]) -> Value {
         let o = self.run(args);
@@ -40,7 +40,7 @@ impl Cli {
             "{args:?}: {}",
             String::from_utf8_lossy(&o.stderr)
         );
-        serde_json::from_slice(&o.stdout).expect("task-manager prints JSON")
+        serde_json::from_slice(&o.stdout).expect("shiori-tasuki prints JSON")
     }
 }
 
@@ -219,7 +219,7 @@ fn stdin_aliases_and_agent_environment() {
     let o = c
         .command()
         .env("CLAUDECODE", "1")
-        .env("TASK_MANAGER_ACTOR", "env-actor")
+        .env("SHIORI_TASUKI_ACTOR", "env-actor")
         .args(["--as", "explicit", "start", "1", "--json"])
         .output()
         .unwrap();
@@ -229,7 +229,7 @@ fn stdin_aliases_and_agent_environment() {
     );
     let o = c
         .command()
-        .env("TASK_MANAGER_ACTOR", "env-actor")
+        .env("SHIORI_TASUKI_ACTOR", "env-actor")
         .args(["start", "1", "--json"])
         .output()
         .unwrap();
@@ -281,17 +281,17 @@ fn database_resolution() {
     let c = Cli::new();
     let o = c
         .command()
-        .env_remove("TASK_MANAGER_DB")
+        .env_remove("SHIORI_TASUKI_DB")
         .args(["list", "--json"])
         .output()
         .unwrap();
     assert!(o.status.success());
-    assert!(c.0.path().join("data/task-manager/tasks.db").is_file());
+    assert!(c.0.path().join("data/shiori-tasuki/tasks.db").is_file());
     let other = c.0.path().join("other-folder");
     std::fs::create_dir(&other).unwrap();
     let o = c
         .command()
-        .env_remove("TASK_MANAGER_DB")
+        .env_remove("SHIORI_TASUKI_DB")
         .current_dir(&other)
         .args(["create", "Shared DB", "--json"])
         .output()
@@ -299,7 +299,7 @@ fn database_resolution() {
     assert!(o.status.success());
     let o = c
         .command()
-        .env_remove("TASK_MANAGER_DB")
+        .env_remove("SHIORI_TASUKI_DB")
         .args(["list", "--json", "title"])
         .output()
         .unwrap();
@@ -311,7 +311,7 @@ fn database_resolution() {
 
     let o = c
         .command()
-        .env_remove("TASK_MANAGER_DB")
+        .env_remove("SHIORI_TASUKI_DB")
         .env_remove("XDG_DATA_HOME")
         .args(["list"])
         .output()
@@ -319,7 +319,7 @@ fn database_resolution() {
     assert!(o.status.success());
     assert!(
         c.0.path()
-            .join(".local/share/task-manager/tasks.db")
+            .join(".local/share/shiori-tasuki/tasks.db")
             .is_file()
     );
     let explicit = c.0.path().join("explicit/tasks.db");
@@ -345,7 +345,7 @@ fn a_database_under_the_former_name_stays_in_use_until_a_new_one_exists() {
     let in_folder = |path: &std::path::Path, title: &str| {
         let o = c
             .command()
-            .env_remove("TASK_MANAGER_DB")
+            .env_remove("SHIORI_TASUKI_DB")
             .args(["create", title])
             .output()
             .unwrap();
@@ -364,10 +364,10 @@ fn a_database_under_the_former_name_stays_in_use_until_a_new_one_exists() {
             .success()
     );
     in_folder(&legacy, "Still old");
-    assert!(!data.join("task-manager/tasks.db").exists());
+    assert!(!data.join("shiori-tasuki/tasks.db").exists());
 
-    std::fs::create_dir_all(data.join("task-manager")).unwrap();
-    let current = data.join("task-manager/tasks.db");
+    std::fs::create_dir_all(data.join("shiori-tasuki")).unwrap();
+    let current = data.join("shiori-tasuki/tasks.db");
     assert!(
         c.command()
             .arg("--db")
@@ -380,7 +380,7 @@ fn a_database_under_the_former_name_stays_in_use_until_a_new_one_exists() {
     );
     let o = c
         .command()
-        .env_remove("TASK_MANAGER_DB")
+        .env_remove("SHIORI_TASUKI_DB")
         .args(["list", "--json", "title"])
         .output()
         .unwrap();
@@ -392,7 +392,7 @@ fn a_database_under_the_former_name_stays_in_use_until_a_new_one_exists() {
 
 #[test]
 fn github_family_filters_and_edit_restriction() {
-    use task_manager::{GithubLink, Store};
+    use shiori_tasuki::{GithubLink, Store};
     let c = Cli::new();
     c.json(&["create", "Issue", "--json"]);
     c.json(&["split", "1", "Child", "--json"]);
@@ -503,12 +503,12 @@ fn help_guide_and_parse_errors_need_no_database() {
         "hide",
         "unhide",
         "XDG_DATA_HOME",
-        "TASK_MANAGER_ACTOR",
+        "SHIORI_TASUKI_ACTOR",
     ] {
         assert!(text.contains(name), "missing {name} in {text}");
     }
     let guide = c.json(&["guide", "--json", "instructions"]);
-    assert_eq!(guide["instructions"], task_manager::INSTRUCTIONS);
+    assert_eq!(guide["instructions"], shiori_tasuki::INSTRUCTIONS);
     let missing = c.run(&["done", "1"]);
     assert_eq!(missing.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&missing.stderr).contains("--summary"));

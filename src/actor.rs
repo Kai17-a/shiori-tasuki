@@ -52,7 +52,7 @@ impl Actor {
     }
 }
 
-/// Reads a name chosen by the person (`--as`, `TASK_MANAGER_ACTOR`) or stored in the
+/// Reads a name chosen by the person (`--as`, `SHIORI_TASUKI_ACTOR`) or stored in the
 /// database: `user` and `github` are the person and the sync, anything else an agent.
 impl From<&str> for Actor {
     fn from(name: &str) -> Self {

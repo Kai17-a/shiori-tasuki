@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
-use task_manager::github::{self, GhCli};
-use task_manager::{
+use shiori_tasuki::github::{self, GhCli};
+use shiori_tasuki::{
     Actor, INSTRUCTIONS, NewSubtask, NewTask, ReviewDecision, Scope, Status, Store, Task,
     TaskUpdate,
 };
@@ -24,14 +24,14 @@ use task_manager::{
     reason = "clap prints these doc comments as --help text, where backticks would show"
 )]
 pub(crate) struct Cli {
-    /// Database: --db > TASK_MANAGER_DB > $XDG_DATA_HOME/task-manager/tasks.db > $HOME/.local/share/task-manager/tasks.db. Parent folders are created.
-    #[arg(long, global = true, env = "TASK_MANAGER_DB")]
+    /// Database: --db > SHIORI_TASUKI_DB > $XDG_DATA_HOME/shiori-tasuki/tasks.db > $HOME/.local/share/shiori-tasuki/tasks.db. Parent folders are created.
+    #[arg(long, global = true, env = "SHIORI_TASUKI_DB")]
     db: Option<PathBuf>,
     /// Actor recorded in history; defaults to claude-code for CLAUDECODE=1, otherwise user. Codex: --as codex.
-    #[arg(long = "as", global = true, env = "TASK_MANAGER_ACTOR")]
+    #[arg(long = "as", global = true, env = "SHIORI_TASUKI_ACTOR")]
     actor: Option<String>,
     /// GitHub repository (owner/name): list filter or default for gh push.
-    #[arg(long, global = true, env = "TASK_MANAGER_REPO")]
+    #[arg(long, global = true, env = "SHIORI_TASUKI_REPO")]
     pub(crate) repo: Option<String>,
     /// Print JSON; optionally select comma-separated top-level fields. View fields: task,subtasks,history.
     #[arg(long, global = true, num_args = 0..=1, default_missing_value = "", value_name = "FIELDS")]
@@ -199,7 +199,7 @@ pub(crate) enum GhCommand {
     /// Create an issue assigned to you and link the resulting task.
     Push {
         id: i64,
-        /// owner/name; overrides the global --repo / TASK_MANAGER_REPO default.
+        /// owner/name; overrides the global --repo / SHIORI_TASUKI_REPO default.
         #[arg(value_name = "REPO")]
         repository: Option<String>,
     },
@@ -230,7 +230,7 @@ pub(crate) enum IgnoreCommand {
 /// The default database under `data`, keeping a database made under the app's
 /// former name (`task-tool`) in use until one exists under the new name.
 fn default_database(data: &std::path::Path) -> PathBuf {
-    let current = data.join("task-manager/tasks.db");
+    let current = data.join("shiori-tasuki/tasks.db");
     let legacy = data.join("task-tool/tasks.db");
     if !current.exists() && legacy.exists() {
         return legacy;
@@ -248,7 +248,7 @@ impl Cli {
             None => std::env::var_os("HOME")
                 .filter(|v| !v.is_empty())
                 .map(|home| PathBuf::from(home).join(".local/share"))
-                .context("HOME is not set; set --db, TASK_MANAGER_DB or XDG_DATA_HOME")?,
+                .context("HOME is not set; set --db, SHIORI_TASUKI_DB or XDG_DATA_HOME")?,
         };
         Ok(default_database(&data))
     }
@@ -263,7 +263,7 @@ impl Cli {
         });
         let actor = actor.trim();
         if actor.is_empty() {
-            bail!("actor must not be empty; use --as NAME or TASK_MANAGER_ACTOR");
+            bail!("actor must not be empty; use --as NAME or SHIORI_TASUKI_ACTOR");
         }
         Ok(Actor::from(actor))
     }
@@ -373,7 +373,7 @@ impl Cli {
             Command::Done { id, summary, links } => {
                 let links: Vec<_> = links
                     .iter()
-                    .map(|url| task_manager::work::WorkLink {
+                    .map(|url| shiori_tasuki::work::WorkLink {
                         url: url.clone(),
                         label: None,
                     })
@@ -394,7 +394,7 @@ impl Cli {
             Command::Link { id, url, label } => {
                 store.add_link(
                     *id,
-                    &task_manager::work::WorkLink {
+                    &shiori_tasuki::work::WorkLink {
                         url: url.clone(),
                         label: label.clone(),
                     },
@@ -498,7 +498,7 @@ impl Cli {
     fn push(&self, store: &Store, id: i64, repository: Option<&str>) -> Result<Task> {
         let repo = repository
             .or(self.repo.as_deref())
-            .context("no repository given; pass owner/name or set --repo / TASK_MANAGER_REPO")?;
+            .context("no repository given; pass owner/name or set --repo / SHIORI_TASUKI_REPO")?;
         Ok(github::push_task(store, &GhCli, id, repo)?)
     }
 }

@@ -1,10 +1,10 @@
-# task-manager 基本仕様
+# shiori-tasuki 基本仕様
 
 最終更新: 2026-11-07
 
 ## 1. 目的
 
-task-manager は、ユーザーのタスクを 1 か所で管理し、その中から AI エージェントに作業を渡すためのツールである。
+shiori-tasuki は、ユーザーのタスクを 1 か所で管理し、その中から AI エージェントに作業を渡すためのツールである。
 
 ## 2. 背景
 
@@ -28,20 +28,20 @@ task-manager は、ユーザーのタスクを 1 か所で管理し、その中�
 ### 4.1 ユーザー（人）
 
 1. タスクをダッシュボードか CLI で登録・整理する。GitHub の自分の Issue は自動で取り込まれる。
-2. AI エージェントとの会話で「task-manager の #N をやって」と頼む。
+2. AI エージェントとの会話で「shiori-tasuki の #N をやって」と頼む。
 3. ダッシュボードで、AI の作業の進み具合と記録を見る。
 4. AI が完了を報告したタスク（確認中）を確認し、承認するか差し戻す。
 
 ### 4.2 AI エージェント
 
-1. 頼まれたタスクを MCP（`get_task`）か CLI（`task-manager view N`）で読む。過去の記録や差し戻しの理由も読む。
-2. 着手を記録する（`start_task` / `task-manager start N`）。
-3. 大きいタスクは子タスクに分ける（`create_subtasks` / `task-manager split`）。子タスクも順に自分で進める。
-4. 進み具合をメモで残す（`add_note` / `task-manager note`）。
-5. 終わったら、何をしてどう確かめたかを報告する（`complete_task` / `task-manager done`）。報告されたタスクは「確認中」になる。
-6. できなかったときは理由を残して手を離す（`fail_task` / `task-manager fail`）。
+1. 頼まれたタスクを MCP（`get_task`）か CLI（`stk view N`）で読む。過去の記録や差し戻しの理由も読む。
+2. 着手を記録する（`start_task` / `stk start N`）。
+3. 大きいタスクは子タスクに分ける（`create_subtasks` / `stk split`）。子タスクも順に自分で進める。
+4. 進み具合をメモで残す（`add_note` / `stk note`）。
+5. 終わったら、何をしてどう確かめたかを報告する（`complete_task` / `stk done`）。報告されたタスクは「確認中」になる。
+6. できなかったときは理由を残して手を離す（`fail_task` / `stk fail`）。
 
-作業手順は `task-manager guide` と MCP の説明文で AI に伝える。
+作業手順は `stk guide` と MCP の説明文で AI に伝える。
 
 ## 5. タスクの状態
 
@@ -91,9 +91,9 @@ AI がタスクに取り組むたびに、次を記録して画面で見られ�
 
 ## 8. AI との接続
 
-- **MCP**: `task-manager mcp`。Claude Code にはユーザー単位で登録する（T3 Code の中の Claude からも使える）。
-- **CLI**: `task-manager`（`gh` 風）。どのフォルダから実行しても同じ DB（`~/.local/share/task-manager/tasks.db`）を使う。`--json` で機械向けの出力を返す。
-- **誰が操作したか**: MCP は接続した AI の名前、CLI は `--as` か `TASK_MANAGER_ACTOR`。Claude Code から実行した CLI は自動で `claude-code` になる。
+- **MCP**: `stk mcp`。Claude Code にはユーザー単位で登録する（T3 Code の中の Claude からも使える）。
+- **CLI**: `shiori-tasuki`（`gh` 風）。どのフォルダから実行しても同じ DB（`~/.local/share/shiori-tasuki/tasks.db`）を使う。`--json` で機械向けの出力を返す。
+- **誰が操作したか**: MCP は接続した AI の名前、CLI は `--as` か `SHIORI_TASUKI_ACTOR`。Claude Code から実行した CLI は自動で `claude-code` になる。
 
 ## 9. タスクの取り込み元
 
@@ -107,7 +107,7 @@ AI がタスクに取り組むたびに、次を記録して画面で見られ�
 
 自分のアカウントのリポジトリ（アーカイブを除く）で自分が作ったIssueと、リポジトリを問わず自分が担当のIssueを取り込み（他の人が立てて自分が担当でないIssueは、外部の入力がAIに届くのを防ぐため取り込まない。設定で取り込まないことにしたリポジトリは除く。追加時に取り込み済みのタスクを削除する）、GitHubの親も取り込み済みの場合は親子関係を毎回同期する。未取り込みの親は作成しない。ローカルの親・子タスクの関係は保持し、親子関係の同期では状態を変更しない。
 
-GitHub にリンクされたタスク（ローカルで作成後に GitHub に公開したものも含む）の題名と説明は GitHub で管理し、task-manager からは変更できない。画面では読み取り専用にし、編集先の Issue リンクを表示する。CLI と MCP で変更しようとするとエラーになる。同期による題名・説明の更新は継続する。状態・担当・作業フォルダ・メモ・子タスク・承認・差し戻し・非表示は引き続き操作できる。
+GitHub にリンクされたタスク（ローカルで作成後に GitHub に公開したものも含む）の題名と説明は GitHub で管理し、shiori-tasuki からは変更できない。画面では読み取り専用にし、編集先の Issue リンクを表示する。CLI と MCP で変更しようとするとエラーになる。同期による題名・説明の更新は継続する。状態・担当・作業フォルダ・メモ・子タスク・承認・差し戻し・非表示は引き続き操作できる。
 
 ## 10. 実装の状況と今後
 

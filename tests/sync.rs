@@ -1,8 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use task_manager::Store;
-use task_manager::github::{GhError, GhRunner};
-use task_manager::sync::Syncer;
+use shiori_tasuki::Store;
+use shiori_tasuki::github::{GhError, GhRunner};
+use shiori_tasuki::sync::Syncer;
 
 /// Replies with each queued result in turn and counts calls.
 #[derive(Default)]

@@ -1,8 +1,12 @@
 [package]
-name = "task-manager"
+name = "shiori-tasuki"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
+
+[[bin]]
+name = "stk"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"

@@ -168,7 +168,7 @@
   const donePeriod = $('#board-done-period');
   const expandedStacks = new Set();
   try {
-    const saved = localStorage.getItem('task-manager-done-period');
+    const saved = localStorage.getItem('shiori-tasuki-done-period');
     if ([...donePeriod.options].some((option) => option.value === saved)) setSelectValue(donePeriod, saved);
   } catch { /* Storage is optional. */ }
 
@@ -180,7 +180,7 @@
     return Date.parse(task.completed_at ?? task.updated_at) >= since;
   }
   try {
-    setSelectValue(subtaskLayout, localStorage.getItem('task-manager-subtask-layout') === 'stack' ? 'stack' : 'list');
+    setSelectValue(subtaskLayout, localStorage.getItem('shiori-tasuki-subtask-layout') === 'stack' ? 'stack' : 'list');
   } catch { /* Storage is optional. */ }
 
 
@@ -518,7 +518,7 @@
   board.addEventListener('scroll', clearFamilyTrace, true);
 
   donePeriod.addEventListener('change', () => {
-    try { localStorage.setItem('task-manager-done-period', donePeriod.value); } catch { /* Storage is optional. */ }
+    try { localStorage.setItem('shiori-tasuki-done-period', donePeriod.value); } catch { /* Storage is optional. */ }
     renderBoard({ filter: true });
   });
   $('#board-show-all-done').addEventListener('click', () => {
@@ -532,7 +532,7 @@
   showSubtasksInput.addEventListener('change', () => renderBoard({ filter: true }));
   showHiddenInput.addEventListener('change', () => renderBoard({ filter: true }));
   subtaskLayout.addEventListener('change', () => {
-    try { localStorage.setItem('task-manager-subtask-layout', subtaskLayout.value); } catch { /* Storage is optional. */ }
+    try { localStorage.setItem('shiori-tasuki-subtask-layout', subtaskLayout.value); } catch { /* Storage is optional. */ }
     renderBoard({ filter: true });
   });
   board.addEventListener('click', (event) => {
@@ -1017,7 +1017,7 @@
   // Card opacity is a per-browser display preference from 0% to 100%. KavUI.setSurfaceOpacity()
   // and its saved value stop at the theme default (52%), so the app saves its own value and sets
   // the variable directly; app.css lifts the theme's lower limit (Kai17-a/Custom-UI#128).
-  const SURFACE_OPACITY_KEY = 'task-manager-surface-opacity';
+  const SURFACE_OPACITY_KEY = 'shiori-tasuki-surface-opacity';
   const surfaceOpacity = $('#surface-opacity');
   const applySurfaceOpacity = (value) => {
     surfaceOpacity.value = value;
@@ -1590,7 +1590,7 @@
     setText('#view-description', view.description);
     $('#view-description').hidden = !view.description;
     pageContent.querySelector('.ui-page-header').classList.toggle('is-tabs-only', Boolean(view.headingInTabs));
-    document.title = `${VIEWS[currentView].title} · task-manager`;
+    document.title = `${VIEWS[currentView].title} · shiori-tasuki`;
     // app.css pins the heading and filter bar of the long views (board, activity).
     pageContent.dataset.currentView = currentView;
   }

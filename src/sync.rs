@@ -128,7 +128,7 @@ impl Syncer {
                 status.last_error = None;
             }
             Err(err) => {
-                eprintln!("task-manager: GitHub sync failed: {err}");
+                eprintln!("shiori-tasuki: GitHub sync failed: {err}");
                 status.last_error = Some(err.to_string());
             }
         }
@@ -143,7 +143,7 @@ impl Syncer {
                 ticker.tick().await;
                 let syncer = self.clone();
                 if let Err(err) = tokio::task::spawn_blocking(move || syncer.run_once()).await {
-                    eprintln!("task-manager: GitHub sync task stopped unexpectedly: {err}");
+                    eprintln!("shiori-tasuki: GitHub sync task stopped unexpectedly: {err}");
                 }
             }
         })
