@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 
 use task_tool::github::{self, GhError, GhRunner, GithubError};
-use task_tool::{NewSubtask, NewTask, Status, Store, TaskUpdate};
+use task_tool::{Actor, NewSubtask, NewTask, Status, Store, TaskUpdate};
 
 /// Records every `gh` invocation and replies with queued outputs.
 #[derive(Default)]
@@ -47,7 +47,7 @@ fn results(items: &[String]) -> String {
 }
 
 fn sync(store: &Store, reply: String) -> github::ImportReport {
-    github::sync_assigned(store, &FakeGh::replying([reply])).unwrap()
+    github::sync_assigned(store, &FakeGh::replying([reply])).expect("sync succeeds")
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn an_unchanged_issue_is_left_alone_so_recent_activity_stays_meaningful() {
     store
         .update(
             before.id,
-            TaskUpdate {
+            &TaskUpdate {
                 status: Some(Status::InProgress),
                 ..TaskUpdate::default()
             },
@@ -158,7 +158,7 @@ fn resync_updates_instead_of_duplicating_and_keeps_local_progress() {
     store
         .update(
             bug.id,
-            TaskUpdate {
+            &TaskUpdate {
                 status: Some(Status::InProgress),
                 ..TaskUpdate::default()
             },
@@ -208,7 +208,7 @@ fn long_issue_titles_are_shortened_instead_of_failing_the_sync() {
 fn rejects_repo_names_that_could_be_read_as_flags() {
     let store = Store::open_in_memory().unwrap();
     let task = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "t".into(),
             ..NewTask::default()
         })
@@ -225,7 +225,7 @@ fn rejects_repo_names_that_could_be_read_as_flags() {
 fn pushes_a_local_task_assigned_to_me_with_its_subtasks_as_a_checklist() {
     let store = Store::open_in_memory().unwrap();
     let task = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "Ship v1".into(),
             description: "Final checks".into(),
             ..NewTask::default()
@@ -234,7 +234,7 @@ fn pushes_a_local_task_assigned_to_me_with_its_subtasks_as_a_checklist() {
     let subtasks = store
         .create_subtasks(
             task.id,
-            vec![
+            &[
                 NewSubtask {
                     title: "Docs".into(),
                     description: String::new(),
@@ -244,13 +244,13 @@ fn pushes_a_local_task_assigned_to_me_with_its_subtasks_as_a_checklist() {
                     description: String::new(),
                 },
             ],
-            "ai",
+            &Actor::from("ai"),
         )
         .unwrap();
     store
         .update(
             subtasks[0].id,
-            TaskUpdate {
+            &TaskUpdate {
                 status: Some(Status::Done),
                 ..TaskUpdate::default()
             },
@@ -337,7 +337,7 @@ fn a_task_finished_locally_stays_done_while_its_issue_is_still_open() {
     store
         .update(
             task.id,
-            TaskUpdate {
+            &TaskUpdate {
                 status: Some(Status::Done),
                 ..TaskUpdate::default()
             },
@@ -355,10 +355,11 @@ fn a_task_finished_locally_stays_done_while_its_issue_is_still_open() {
 
 fn child(number: u32, parent: Option<u32>) -> String {
     let mut value: serde_json::Value =
-        serde_json::from_str(&issue("o/r", number, "t", "OPEN")).unwrap();
-    value["parent"] = parent
-        .map(|n| serde_json::json!({"number": n, "repository": {"nameWithOwner":"o/r"}}))
-        .unwrap_or(serde_json::Value::Null);
+        serde_json::from_str(&issue("o/r", number, "t", "OPEN")).expect("issue fixture is JSON");
+    value["parent"] = parent.map_or(
+        serde_json::Value::Null,
+        |n| serde_json::json!({"number": n, "repository": {"nameWithOwner":"o/r"}}),
+    );
     value.to_string()
 }
 
@@ -429,20 +430,20 @@ fn local_hierarchy_is_preserved_and_linking_does_not_complete_parent() {
     sync(&store, results(&[child(1, None)]));
     let parent = store.find_by_github("o/r", 1).unwrap().unwrap();
     let local = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "local".into(),
             parent_id: Some(parent.id),
             ..NewTask::default()
         })
         .unwrap();
     let local_parent = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "local parent".into(),
             ..NewTask::default()
         })
         .unwrap();
     let protected = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "t".into(),
             parent_id: Some(local_parent.id),
             ..NewTask::default()

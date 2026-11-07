@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+use crate::Actor;
 use crate::github::{self, GhRunner};
 use crate::store::{Scope, Store, StoreError};
 use crate::task::{NewSubtask, NewTask, Status, Task, TaskUpdate};
@@ -54,20 +55,35 @@ pub struct McpServer {
     store: Store,
     gh: Arc<dyn GhRunner + Send + Sync>,
     default_repo: Option<String>,
-    client_name: String,
+    /// The connected agent, named by the client; never the person or the GitHub sync.
+    actor: Actor,
     /// Folder the agent runs in; new top-level tasks are worked on there.
     workdir: Option<String>,
+    /// T3 Code thread that started this server, recorded on each work session.
+    thread_id: Option<String>,
 }
 
 /// JSON-RPC error codes from the specification.
 mod code {
-    pub const PARSE_ERROR: i64 = -32700;
-    pub const INVALID_REQUEST: i64 = -32600;
-    pub const METHOD_NOT_FOUND: i64 = -32601;
-    pub const INVALID_PARAMS: i64 = -32602;
+    pub(super) const PARSE_ERROR: i64 = -32700;
+    pub(super) const INVALID_REQUEST: i64 = -32600;
+    pub(super) const METHOD_NOT_FOUND: i64 = -32601;
+    pub(super) const INVALID_PARAMS: i64 = -32602;
 }
 
 struct RpcError(i64, String);
+
+impl std::fmt::Debug for McpServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The gh runner is a trait object without Debug.
+        f.debug_struct("McpServer")
+            .field("actor", &self.actor)
+            .field("default_repo", &self.default_repo)
+            .field("workdir", &self.workdir)
+            .field("thread_id", &self.thread_id)
+            .finish_non_exhaustive()
+    }
+}
 
 impl McpServer {
     pub fn new(
@@ -79,11 +95,12 @@ impl McpServer {
             store,
             gh,
             default_repo,
-            client_name: "ai-agent".into(),
+            actor: Actor::Agent("ai-agent".into()),
             // Agents start MCP servers in their project folder.
             workdir: std::env::current_dir()
                 .ok()
                 .map(|d| d.display().to_string()),
+            thread_id: std::env::var("T3CODE_THREAD_ID").ok(),
         }
     }
 
@@ -112,9 +129,9 @@ impl McpServer {
     /// Handles one raw line; returns `None` for notifications.
     pub fn handle_line(&mut self, line: &str) -> Option<Value> {
         match serde_json::from_str::<Value>(line) {
-            Ok(message) => self.handle(message),
+            Ok(message) => self.handle(&message),
             Err(e) => Some(error_response(
-                Value::Null,
+                &Value::Null,
                 code::PARSE_ERROR,
                 &e.to_string(),
             )),
@@ -122,7 +139,7 @@ impl McpServer {
     }
 
     /// Handles one JSON-RPC message; returns `None` for notifications.
-    pub fn handle(&mut self, message: Value) -> Option<Value> {
+    pub fn handle(&mut self, message: &Value) -> Option<Value> {
         let id = message.get("id").cloned();
         let method = message.get("method").and_then(Value::as_str);
         let (Some(id), Some(method)) = (id, method) else {
@@ -130,12 +147,12 @@ impl McpServer {
             // no method is malformed.
             return message
                 .get("id")
-                .map(|id| error_response(id.clone(), code::INVALID_REQUEST, "missing method"));
+                .map(|id| error_response(id, code::INVALID_REQUEST, "missing method"));
         };
         let params = message.get("params").cloned().unwrap_or(json!({}));
         let response = match self.dispatch(method, params) {
             Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
-            Err(RpcError(code, msg)) => error_response(id, code, &msg),
+            Err(RpcError(code, msg)) => error_response(&id, code, &msg),
         };
         Some(response)
     }
@@ -163,13 +180,14 @@ impl McpServer {
     }
 
     fn initialize(&mut self, params: &Value) -> Value {
-        if let Some(name) = params
+        // Actor::agent refuses "user" and "github", which carry the person's rights (only
+        // the person approves work), so a client cannot take them by naming itself that way.
+        if let Some(actor) = params
             .pointer("/clientInfo/name")
             .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|n| !n.is_empty())
+            .and_then(Actor::agent)
         {
-            self.client_name = name.to_owned();
+            self.actor = actor;
         }
         let requested = params.get("protocolVersion").and_then(Value::as_str);
         let version = requested
@@ -229,6 +247,15 @@ impl McpServer {
     }
 
     fn run_tool(&self, name: &str, args: Value) -> Result<Value, String> {
+        match name {
+            "list_tasks" | "get_task" | "get_stats" => self.read_tool(name, args),
+            "start_task" | "add_note" | "complete_task" | "fail_task" => self.work_tool(name, args),
+            _ => self.edit_tool(name, args),
+        }
+    }
+
+    /// Tools that only read: listing, one task, statistics.
+    fn read_tool(&self, name: &str, args: Value) -> Result<Value, String> {
         let store = &self.store;
         match name {
             "list_tasks" => {
@@ -242,7 +269,7 @@ impl McpServer {
                 // "me" is the calling agent; an assignee filter searches subtasks too.
                 let assignee = a.assignee.map(|n| {
                     if n == "me" {
-                        self.client_name.clone()
+                        self.actor.as_str().to_owned()
                     } else {
                         n
                     }
@@ -281,6 +308,76 @@ impl McpServer {
                     json!({ "task": task, "subtasks": subtasks, "history": history, "sessions": store.sessions(a.id).map_err(|e| e.to_string())? }),
                 )
             }
+            "get_stats" => to_json(&store.stats().map_err(|e| e.to_string())?),
+            _ => Err(format!("unknown tool {name}")),
+        }
+    }
+
+    /// Tools that record the agent's work on a task: start, notes, report, failure.
+    fn work_tool(&self, name: &str, args: Value) -> Result<Value, String> {
+        let store = &self.store;
+        match name {
+            "start_task" => {
+                #[derive(Deserialize)]
+                struct A {
+                    id: i64,
+                }
+                let a: A = args_of(args)?;
+                to_json(
+                    &store
+                        .start_task(a.id, &self.actor, self.thread_id.as_deref())
+                        .map_err(|e| e.to_string())?,
+                )
+            }
+            "add_note" => {
+                #[derive(Deserialize)]
+                struct A {
+                    id: i64,
+                    message: String,
+                }
+                let a: A = args_of(args)?;
+                to_json(
+                    &store
+                        .add_note(a.id, &self.actor, &a.message)
+                        .map_err(|e| e.to_string())?,
+                )
+            }
+            "complete_task" => {
+                #[derive(Deserialize)]
+                struct A {
+                    id: i64,
+                    summary: String,
+                    #[serde(default)]
+                    links: Vec<crate::work::WorkLink>,
+                }
+                let a: A = args_of(args)?;
+                to_json(
+                    &store
+                        .complete_with_links(a.id, &self.actor, &a.summary, &a.links)
+                        .map_err(|e| e.to_string())?,
+                )
+            }
+            "fail_task" => {
+                #[derive(Deserialize)]
+                struct A {
+                    id: i64,
+                    reason: String,
+                }
+                let a: A = args_of(args)?;
+                to_json(
+                    &store
+                        .fail_task(a.id, &self.actor, &a.reason)
+                        .map_err(|e| e.to_string())?,
+                )
+            }
+            _ => Err(format!("unknown tool {name}")),
+        }
+    }
+
+    /// Tools that add or change tasks, or publish one to GitHub.
+    fn edit_tool(&self, name: &str, args: Value) -> Result<Value, String> {
+        let store = &self.store;
+        match name {
             "create_task" => {
                 #[derive(Deserialize)]
                 struct A {
@@ -299,12 +396,12 @@ impl McpServer {
                         .flatten()
                 });
                 let task = store
-                    .create(NewTask {
+                    .create(&NewTask {
                         title: a.title,
                         description: a.description,
                         parent_id: a.parent_id,
                         status: None,
-                        created_by: Some(self.client_name.clone()),
+                        created_by: Some(self.actor.clone()),
                         workdir,
                     })
                     .map_err(|e| e.to_string())?;
@@ -318,7 +415,7 @@ impl McpServer {
                 }
                 let a: A = args_of(args)?;
                 let tasks = store
-                    .create_subtasks(a.parent_id, a.subtasks, &self.client_name)
+                    .create_subtasks(a.parent_id, &a.subtasks, &self.actor)
                     .map_err(|e| e.to_string())?;
                 to_json(&tasks)
             }
@@ -331,64 +428,10 @@ impl McpServer {
                 }
                 let a: A = args_of(args)?;
                 let task = store
-                    .update_as(a.id, a.update, &self.client_name)
+                    .update_as(a.id, &a.update, &self.actor)
                     .map_err(|e| e.to_string())?;
                 to_json(&task)
             }
-            "start_task" => {
-                #[derive(Deserialize)]
-                struct A {
-                    id: i64,
-                }
-                let a: A = args_of(args)?;
-                to_json(
-                    &store
-                        .start_task(a.id, &self.client_name)
-                        .map_err(|e| e.to_string())?,
-                )
-            }
-            "add_note" => {
-                #[derive(Deserialize)]
-                struct A {
-                    id: i64,
-                    message: String,
-                }
-                let a: A = args_of(args)?;
-                to_json(
-                    &store
-                        .add_note(a.id, &self.client_name, &a.message)
-                        .map_err(|e| e.to_string())?,
-                )
-            }
-            "complete_task" => {
-                #[derive(Deserialize)]
-                struct A {
-                    id: i64,
-                    summary: String,
-                    #[serde(default)]
-                    links: Vec<crate::work::WorkLink>,
-                }
-                let a: A = args_of(args)?;
-                to_json(
-                    &store
-                        .complete_with_links(a.id, &self.client_name, &a.summary, a.links)
-                        .map_err(|e| e.to_string())?,
-                )
-            }
-            "fail_task" => {
-                #[derive(Deserialize)]
-                struct A {
-                    id: i64,
-                    reason: String,
-                }
-                let a: A = args_of(args)?;
-                to_json(
-                    &store
-                        .fail_task(a.id, &self.client_name, &a.reason)
-                        .map_err(|e| e.to_string())?,
-                )
-            }
-            "get_stats" => to_json(&store.stats().map_err(|e| e.to_string())?),
             "push_task_to_github" => {
                 #[derive(Deserialize)]
                 struct A {
@@ -432,7 +475,7 @@ fn args_of<T: DeserializeOwned>(args: Value) -> Result<T, String> {
     serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))
 }
 
-fn error_response(id: Value, code: i64, message: &str) -> Value {
+fn error_response(id: &Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 

@@ -2,6 +2,7 @@
 name = "task-tool"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 
 [dependencies]
 anyhow = "1.0.104"
@@ -19,3 +20,42 @@ tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net", "s
 http-body-util = "0.1.5"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
+
+# BeautifulRust lints (https://github.com/morganlinton/BeautifulRust, lints/lints.toml).
+# This is an application, so the library-only lints are left out: missing_docs,
+# exhaustive_enums, print_stdout and print_stderr (the CLI and server print by design).
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "allow"
+panic_in_result_fn = "warn"
+missing_panics_doc = "warn"
+missing_errors_doc = "warn"
+missing_assert_message = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+fn_params_excessive_bools = "warn"
+struct_excessive_bools = "warn"
+clone_on_ref_ptr = "warn"
+redundant_clone = "warn"
+rc_buffer = "warn"
+string_add = "warn"
+wildcard_imports = "warn"
+dbg_macro = "warn"
+todo = "warn"
+as_conversions = "warn"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+module_inception = "allow"
+enum_glob_use = "allow"

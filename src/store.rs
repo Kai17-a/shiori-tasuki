@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
+use crate::Actor;
 use crate::activity::{EventKind, record};
 use crate::task::{GithubLink, NewSubtask, NewTask, Status, SubtaskSummary, Task, TaskUpdate};
 
@@ -202,7 +203,7 @@ impl Store {
     ///
     /// # Errors
     ///
-    /// Fails only if SQLite cannot allocate the database.
+    /// Fails only if the in-memory database cannot be allocated.
     pub fn open_in_memory() -> Result<Self, StoreError> {
         Self::init(Connection::open_in_memory()?)
     }
@@ -216,10 +217,13 @@ impl Store {
                 "database schema {version} is newer than this program supports ({SCHEMA_VERSION})"
             )));
         }
-        for (from, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
+        let applied = usize::try_from(version).map_err(|_| {
+            StoreError::Invalid(format!("database schema version {version} is not valid"))
+        })?;
+        for (from, sql) in (0_i64..).zip(MIGRATIONS).skip(applied) {
             let tx = conn.transaction()?;
             tx.execute_batch(sql)?;
-            tx.pragma_update(None, "user_version", from as i64 + 1)?;
+            tx.pragma_update(None, "user_version", from + 1)?;
             tx.commit()?;
         }
         Ok(Self {
@@ -227,6 +231,14 @@ impl Store {
         })
     }
 
+    /// Locks the shared connection.
+    ///
+    /// # Panics
+    ///
+    /// When an earlier holder panicked. This is deliberate: storage code holds the lock only
+    /// around SQL, so a panic there is a bug, and stopping beats writing after an unknown
+    /// failure. (Recovering would be possible, since an unfinished `Transaction` rolls back
+    /// on drop, but it would hide the bug.)
     pub(crate) fn conn(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().expect("store lock poisoned")
     }
@@ -237,14 +249,12 @@ impl Store {
     ///
     /// [`StoreError::Invalid`] for a blank or overlong title,
     /// [`StoreError::NotFound`] when the parent does not exist.
-    pub fn create(&self, new: NewTask) -> Result<Task, StoreError> {
-        if new.status == Some(Status::Done)
-            && crate::activity::is_agent(new.created_by.as_deref().unwrap_or("user"))
-        {
+    pub fn create(&self, new: &NewTask) -> Result<Task, StoreError> {
+        let created_by = new.created_by.as_ref().unwrap_or(&Actor::User);
+        if new.status == Some(Status::Done) && created_by.is_agent() {
             return Err(crate::activity::agent_done_error());
         }
         let title = validate_title(&new.title)?;
-        let created_by = new.created_by.as_deref().unwrap_or("user");
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         if let Some(parent) = new.parent_id {
@@ -262,7 +272,7 @@ impl Store {
                 title,
                 new.description.trim(),
                 new.status.unwrap_or_default().as_str(),
-                created_by,
+                created_by.as_str(),
                 new.workdir
                     .as_deref()
                     .map(str::trim)
@@ -284,8 +294,8 @@ impl Store {
     pub fn create_subtasks(
         &self,
         parent_id: i64,
-        subtasks: Vec<NewSubtask>,
-        created_by: &str,
+        subtasks: &[NewSubtask],
+        created_by: &Actor,
     ) -> Result<Vec<Task>, StoreError> {
         if subtasks.is_empty() {
             return Err(StoreError::Invalid(
@@ -305,7 +315,12 @@ impl Store {
             tx.execute(
                 "INSERT INTO tasks (parent_id, title, description, created_by, workdir)
                  VALUES (?1, ?2, ?3, ?4, (SELECT workdir FROM tasks WHERE id = ?1))",
-                params![parent_id, title, subtask.description.trim(), created_by],
+                params![
+                    parent_id,
+                    title,
+                    subtask.description.trim(),
+                    created_by.as_str()
+                ],
             )?;
             let id = tx.last_insert_rowid();
             record(&tx, id, created_by, EventKind::Created, "", None)?;
@@ -358,8 +373,8 @@ impl Store {
     /// # Errors
     ///
     /// See [`Store::update_as`].
-    pub fn update(&self, id: i64, update: TaskUpdate) -> Result<Task, StoreError> {
-        self.update_as(id, update, "user")
+    pub fn update(&self, id: i64, update: &TaskUpdate) -> Result<Task, StoreError> {
+        self.update_as(id, update, &Actor::User)
     }
 
     /// Applies the fields set in `update` and records what changed, and who changed it,
@@ -368,13 +383,18 @@ impl Store {
     /// # Errors
     ///
     /// [`StoreError::NotFound`] for an unknown id, [`StoreError::Invalid`] for a bad title.
-    pub fn update_as(&self, id: i64, update: TaskUpdate, actor: &str) -> Result<Task, StoreError> {
-        if update.status == Some(Status::Done) && crate::activity::is_agent(actor) {
+    pub fn update_as(
+        &self,
+        id: i64,
+        update: &TaskUpdate,
+        actor: &Actor,
+    ) -> Result<Task, StoreError> {
+        if update.status == Some(Status::Done) && actor.is_agent() {
             return Err(crate::activity::agent_done_error());
         }
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        apply_update(&tx, id, &update, actor)?;
+        apply_update(&tx, id, update, actor)?;
         if update.status == Some(Status::Done) {
             complete_ancestors(&tx, id, actor)?;
         }
@@ -442,109 +462,17 @@ impl Store {
         let gh_state = if issue.closed { "closed" } else { "open" };
         let outcome = match existing {
             None => {
-                let status = if issue.closed {
-                    Status::Done
-                } else {
-                    Status::Todo
-                };
-                tx.execute(
-                    &format!(
-                        "INSERT INTO tasks (title, description, status, created_by,
-                            gh_repo, gh_number, gh_url, created_at, completed_at, gh_state)
-                         VALUES (?1, ?2, ?3, 'github', ?4, ?5, ?6, COALESCE(?7, {NOW}),
-                            CASE WHEN ?3 = 'done' THEN COALESCE(?8, {NOW}) END, ?9)"
-                    ),
-                    params![
-                        issue.title,
-                        issue.body.trim(),
-                        status.as_str(),
-                        issue.link.repo,
-                        issue.link.number,
-                        issue.link.url,
-                        issue.created_at,
-                        issue.closed_at,
-                        gh_state
-                    ],
-                )?;
-                let id = tx.last_insert_rowid();
-                tx.execute(
-                    &format!(
-                        "INSERT INTO task_events (task_id, actor, kind, created_at)
-                         VALUES (?1, 'github', 'created', COALESCE(?2, {NOW}))"
-                    ),
-                    params![id, issue.created_at],
-                )?;
+                insert_issue(&tx, issue, gh_state)?;
                 Upsert::Created
             }
-            Some((id, current, previous_state)) => {
-                // Only a real reopen moves a done task back. A task an agent finished
-                // while its issue is still open stays done; otherwise a later sync would
-                // pick it up again after every sync.
-                let reopened = !issue.closed && previous_state.as_deref() == Some("closed");
-                let status = match (issue.closed, current.as_str()) {
-                    (true, _) => Status::Done.as_str(),
-                    (false, "done") if reopened => Status::Todo.as_str(),
-                    (false, other) => other,
-                };
-                tx.execute(
-                    "UPDATE tasks SET gh_state = ?2 WHERE id = ?1",
-                    params![id, gh_state],
-                )?;
-                let changed = tx.execute(
-                    &format!(
-                        "UPDATE tasks SET
-                            title = ?2, description = ?3, gh_url = ?4,
-                            completed_at = CASE
-                                WHEN ?5 != 'done' THEN NULL
-                                WHEN status = 'done' THEN completed_at
-                                ELSE COALESCE(?6, {NOW})
-                            END,
-                            status = ?5,
-                            updated_at = {NOW}
-                         WHERE id = ?1 AND (title IS NOT ?2 OR description IS NOT ?3
-                            OR gh_url IS NOT ?4 OR status IS NOT ?5)"
-                    ),
-                    params![
-                        id,
-                        issue.title,
-                        issue.body.trim(),
-                        issue.link.url,
-                        status,
-                        issue.closed_at
-                    ],
-                )?;
-                if changed == 0 {
-                    Upsert::Unchanged
-                } else {
-                    let before: Status = current.parse().unwrap_or_default();
-                    let after: Status = status.parse().unwrap_or_default();
-                    if before == after {
-                        record(
-                            &tx,
-                            id,
-                            "github",
-                            EventKind::Updated,
-                            "GitHubの内容を反映",
-                            None,
-                        )?;
-                    } else {
-                        let message = if issue.closed {
-                            "GitHubでクローズ"
-                        } else {
-                            "GitHubで再オープン"
-                        };
-                        record(
-                            &tx,
-                            id,
-                            "github",
-                            EventKind::Status,
-                            message,
-                            Some((before, after)),
-                        )?;
-                    }
-                    Upsert::Updated
-                }
-            }
+            Some((id, current, previous_state)) => refresh_issue(
+                &tx,
+                id,
+                &current,
+                previous_state.as_deref(),
+                issue,
+                gh_state,
+            )?,
         };
         tx.commit()?;
         Ok(outcome)
@@ -592,7 +520,7 @@ impl Store {
             Some(parent) => format!("GitHubの親子関係を反映（親: {parent}）"),
             None => "GitHubの親子関係を解除".to_owned(),
         };
-        record(&tx, id, "github", EventKind::Updated, &message, None)?;
+        record(&tx, id, &Actor::Github, EventKind::Updated, &message, None)?;
         tx.commit()?;
         Ok(true)
     }
@@ -614,12 +542,130 @@ impl Store {
     }
 }
 
+/// Creates the task for a newly seen GitHub issue, with its creation as the first history entry.
+fn insert_issue(
+    tx: &Connection,
+    issue: &IssueRecord<'_>,
+    gh_state: &str,
+) -> Result<(), StoreError> {
+    let status = if issue.closed {
+        Status::Done
+    } else {
+        Status::Todo
+    };
+    tx.execute(
+        &format!(
+            "INSERT INTO tasks (title, description, status, created_by,
+                gh_repo, gh_number, gh_url, created_at, completed_at, gh_state)
+             VALUES (?1, ?2, ?3, 'github', ?4, ?5, ?6, COALESCE(?7, {NOW}),
+                CASE WHEN ?3 = 'done' THEN COALESCE(?8, {NOW}) END, ?9)"
+        ),
+        params![
+            issue.title,
+            issue.body.trim(),
+            status.as_str(),
+            issue.link.repo,
+            issue.link.number,
+            issue.link.url,
+            issue.created_at,
+            issue.closed_at,
+            gh_state
+        ],
+    )?;
+    let id = tx.last_insert_rowid();
+    tx.execute(
+        &format!(
+            "INSERT INTO task_events (task_id, actor, kind, created_at)
+             VALUES (?1, 'github', 'created', COALESCE(?2, {NOW}))"
+        ),
+        params![id, issue.created_at],
+    )?;
+    Ok(())
+}
+
+/// Brings an existing issue's task up to date; only real changes are written and recorded.
+fn refresh_issue(
+    tx: &Connection,
+    id: i64,
+    current: &str,
+    previous_state: Option<&str>,
+    issue: &IssueRecord<'_>,
+    gh_state: &str,
+) -> Result<Upsert, StoreError> {
+    // Only a real reopen moves a done task back. A task an agent finished
+    // while its issue is still open stays done; otherwise a later sync would
+    // pick it up again after every sync.
+    let reopened = !issue.closed && previous_state == Some("closed");
+    let status = match (issue.closed, current) {
+        (true, _) => Status::Done.as_str(),
+        (false, "done") if reopened => Status::Todo.as_str(),
+        (false, other) => other,
+    };
+    tx.execute(
+        "UPDATE tasks SET gh_state = ?2 WHERE id = ?1",
+        params![id, gh_state],
+    )?;
+    let changed = tx.execute(
+        &format!(
+            "UPDATE tasks SET
+                title = ?2, description = ?3, gh_url = ?4,
+                completed_at = CASE
+                    WHEN ?5 != 'done' THEN NULL
+                    WHEN status = 'done' THEN completed_at
+                    ELSE COALESCE(?6, {NOW})
+                END,
+                status = ?5,
+                updated_at = {NOW}
+             WHERE id = ?1 AND (title IS NOT ?2 OR description IS NOT ?3
+                OR gh_url IS NOT ?4 OR status IS NOT ?5)"
+        ),
+        params![
+            id,
+            issue.title,
+            issue.body.trim(),
+            issue.link.url,
+            status,
+            issue.closed_at
+        ],
+    )?;
+    if changed == 0 {
+        return Ok(Upsert::Unchanged);
+    }
+    let before: Status = current.parse().unwrap_or_default();
+    let after: Status = status.parse().unwrap_or_default();
+    if before == after {
+        record(
+            tx,
+            id,
+            &Actor::Github,
+            EventKind::Updated,
+            "GitHubの内容を反映",
+            None,
+        )?;
+    } else {
+        let message = if issue.closed {
+            "GitHubでクローズ"
+        } else {
+            "GitHubで再オープン"
+        };
+        record(
+            tx,
+            id,
+            &Actor::Github,
+            EventKind::Status,
+            message,
+            Some((before, after)),
+        )?;
+    }
+    Ok(Upsert::Updated)
+}
+
 /// Writes `update` and its history entries inside an open transaction.
 pub(crate) fn apply_update(
     tx: &Connection,
     id: i64,
     update: &TaskUpdate,
-    actor: &str,
+    actor: &Actor,
 ) -> Result<(), StoreError> {
     let current = tx
         .query_row(&format!("{SELECT} WHERE t.id = ?1"), [id], task_from_row)
@@ -762,7 +808,7 @@ pub(crate) fn task_from_row(row: &Row<'_>) -> rusqlite::Result<Task> {
 pub(crate) fn complete_ancestors(
     conn: &Connection,
     mut id: i64,
-    actor: &str,
+    actor: &Actor,
 ) -> Result<(), StoreError> {
     loop {
         let parent: Option<i64> =

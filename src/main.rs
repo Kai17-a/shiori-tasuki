@@ -24,7 +24,7 @@ async fn run() -> Result<()> {
     let cli = match cli::Cli::try_parse() {
         Ok(cli) => cli,
         Err(error) => {
-            let code = if error.use_stderr() { 1 } else { 0 };
+            let code = i32::from(error.use_stderr());
             error.print()?;
             std::process::exit(code);
         }
@@ -39,7 +39,7 @@ async fn run() -> Result<()> {
         cli::Command::Serve { addr } => serve(store, addr, &db, cli.repo).await?,
         cli::Command::Mcp => {
             let gh: Arc<dyn GhRunner + Send + Sync> = Arc::new(GhCli);
-            Syncer::new(store.clone(), gh.clone()).spawn();
+            Syncer::new(store.clone(), Arc::clone(&gh)).spawn();
             let server = McpServer::new(store, gh, cli.repo);
             tokio::task::spawn_blocking(move || server.serve_stdio()).await??;
         }
@@ -83,9 +83,8 @@ async fn serve(store: Store, addr: SocketAddr, db: &Path, repo: Option<String>) 
 /// User scope makes the server available from any folder, which matters for tools such as
 /// T3 Code that run each session in its own working directory.
 fn mcp_command(db: &Path, repo: Option<&str>) -> String {
-    let exe = std::env::current_exe()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "task-tool".into());
+    let exe =
+        std::env::current_exe().map_or_else(|_| "task-tool".into(), |p| p.display().to_string());
     let db = std::path::absolute(db).unwrap_or_else(|_| db.to_path_buf());
     let repo = repo.map_or_else(String::new, |r| format!(" --repo {}", shell_quote(r)));
     format!(

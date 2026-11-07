@@ -3,11 +3,15 @@
 //! The history is what lets a person see what an AI agent actually did, and what lets an
 //! agent read why an earlier run failed.
 
+use std::str::FromStr;
+
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
+use crate::Actor;
 use crate::store::{Store, StoreError, apply_update, complete_ancestors};
 use crate::task::{Status, Task, TaskUpdate};
+use crate::work::SessionOutcome;
 
 /// Longest accepted note, in characters.
 const MAX_NOTE_CHARS: usize = 4000;
@@ -35,6 +39,20 @@ pub enum EventKind {
 }
 
 impl EventKind {
+    const ALL: [Self; 11] = [
+        Self::Created,
+        Self::Started,
+        Self::Reported,
+        Self::Approved,
+        Self::Rejected,
+        Self::Failed,
+        Self::Status,
+        Self::Updated,
+        Self::Assigned,
+        Self::Note,
+        Self::Split,
+    ];
+
     fn as_str(self) -> &'static str {
         match self {
             Self::Created => "created",
@@ -50,24 +68,32 @@ impl EventKind {
             Self::Split => "split",
         }
     }
+}
 
-    fn parse(s: &str) -> Option<Self> {
-        [
-            Self::Created,
-            Self::Started,
-            Self::Reported,
-            Self::Approved,
-            Self::Rejected,
-            Self::Failed,
-            Self::Status,
-            Self::Updated,
-            Self::Assigned,
-            Self::Note,
-            Self::Split,
-        ]
-        .into_iter()
-        .find(|k| k.as_str() == s)
+/// Error returned when a string is not one of the known [`EventKind`] values.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown history entry kind {0:?}")]
+pub struct ParseEventKindError(String);
+
+impl FromStr for EventKind {
+    type Err = ParseEventKindError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|k| k.as_str() == s)
+            .ok_or_else(|| ParseEventKindError(s.to_owned()))
     }
+}
+
+/// The person's decision on work waiting for review.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewDecision {
+    /// The task becomes done.
+    Approve,
+    /// The task returns to todo with a reason.
+    Reject,
 }
 
 /// One history entry, with the title of its task for activity feeds.
@@ -89,7 +115,7 @@ pub struct Event {
 pub(crate) fn record(
     conn: &Connection,
     task_id: i64,
-    actor: &str,
+    actor: &Actor,
     kind: EventKind,
     message: &str,
     change: Option<(Status, Status)>,
@@ -99,7 +125,7 @@ pub(crate) fn record(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         params![
             task_id,
-            actor,
+            actor.as_str(),
             kind.as_str(),
             message,
             change.map(|(from, _)| from.as_str()),
@@ -115,6 +141,10 @@ FROM task_events e JOIN tasks t ON t.id = e.task_id";
 
 fn event_from_row(row: &Row<'_>) -> rusqlite::Result<Event> {
     let kind: String = row.get(4)?;
+    // An unknown kind means the database is newer or damaged; say so instead of guessing.
+    let kind = kind.parse::<EventKind>().map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
+    })?;
     let status = |i: usize| -> rusqlite::Result<Option<Status>> {
         Ok(row
             .get::<_, Option<String>>(i)?
@@ -125,7 +155,7 @@ fn event_from_row(row: &Row<'_>) -> rusqlite::Result<Event> {
         task_id: row.get(1)?,
         task_title: row.get(2)?,
         actor: row.get(3)?,
-        kind: EventKind::parse(&kind).unwrap_or(EventKind::Updated),
+        kind,
         message: row.get(5)?,
         from_status: status(6)?,
         to_status: status(7)?,
@@ -160,7 +190,12 @@ impl Store {
     ///
     /// [`StoreError::Invalid`] for an empty or overlong note, [`StoreError::NotFound`]
     /// for an unknown task.
-    pub fn add_note(&self, task_id: i64, actor: &str, message: &str) -> Result<Event, StoreError> {
+    pub fn add_note(
+        &self,
+        task_id: i64,
+        actor: &Actor,
+        message: &str,
+    ) -> Result<Event, StoreError> {
         let message = validate_note(message)?;
         let conn = self.conn();
         exists(&conn, task_id)?;
@@ -216,10 +251,18 @@ impl Store {
 
     /// An agent (or person) takes a task: it becomes in progress and assigned to `actor`.
     ///
+    /// `thread_id` names the conversation doing the work (for example `T3CODE_THREAD_ID`);
+    /// the caller reads it, so storage never depends on the process environment.
+    ///
     /// # Errors
     ///
     /// [`StoreError::NotFound`] for an unknown task.
-    pub fn start_task(&self, id: i64, actor: &str) -> Result<Task, StoreError> {
+    pub fn start_task(
+        &self,
+        id: i64,
+        actor: &Actor,
+        thread_id: Option<&str>,
+    ) -> Result<Task, StoreError> {
         let task = self.get(id)?.ok_or(StoreError::NotFound(id))?;
         let git = crate::git_evidence::capture(task.workdir.as_deref(), None);
         let mut conn = self.conn();
@@ -229,12 +272,12 @@ impl Store {
             id,
             &TaskUpdate {
                 status: Some(Status::InProgress),
-                assignee: Some(actor.to_owned()),
+                assignee: Some(actor.as_str().to_owned()),
                 ..TaskUpdate::default()
             },
             actor,
         )?;
-        crate::work::open(&tx, &task, actor, git)?;
+        crate::work::open(&tx, &task, actor, thread_id, git.as_ref())?;
         record(&tx, id, actor, EventKind::Started, "", None)?;
         tx.commit()?;
         drop(conn);
@@ -247,20 +290,20 @@ impl Store {
     ///
     /// # Errors
     /// Returns an error for an invalid summary, missing task or database failure.
-    pub fn complete_task(&self, id: i64, agent: &str, summary: &str) -> Result<Task, StoreError> {
-        self.complete_with_links(id, agent, summary, Vec::new())
+    pub fn complete_task(&self, id: i64, agent: &Actor, summary: &str) -> Result<Task, StoreError> {
+        self.complete_with_links(id, agent, summary, &[])
     }
 
     /// Records why work stopped, returns the task to todo and clears its assignee.
     ///
     /// # Errors
     /// Returns an error for an invalid reason, missing task or database failure.
-    pub fn fail_task(&self, id: i64, agent: &str, reason: &str) -> Result<Task, StoreError> {
+    pub fn fail_task(&self, id: i64, agent: &Actor, reason: &str) -> Result<Task, StoreError> {
         self.report_outcome(
             id,
             agent,
             reason,
-            TaskUpdate {
+            &TaskUpdate {
                 status: Some(Status::Todo),
                 assignee: Some(String::new()),
                 ..TaskUpdate::default()
@@ -272,9 +315,9 @@ impl Store {
     pub(crate) fn report_outcome(
         &self,
         id: i64,
-        agent: &str,
+        agent: &Actor,
         message: &str,
-        update: TaskUpdate,
+        update: &TaskUpdate,
         links: &[crate::work::WorkLink],
     ) -> Result<Task, StoreError> {
         let message = validate_note(message)?;
@@ -285,7 +328,7 @@ impl Store {
         let sessions = self.sessions(id)?;
         let start = sessions
             .iter()
-            .find(|s| s.outcome == "running")
+            .find(|s| s.outcome == SessionOutcome::Running)
             .and_then(|s| s.start_git.as_ref())
             .and_then(|g| g.head.as_deref());
         let git = crate::git_evidence::capture(task.workdir.as_deref(), start);
@@ -293,32 +336,16 @@ impl Store {
         let tx = conn.transaction()?;
         exists(&tx, id)?;
         for link in links {
-            crate::work::attach(&tx, id, link.clone())?;
+            crate::work::attach(&tx, id, link)?;
         }
-        record(
-            &tx,
-            id,
-            agent,
-            if update.status == Some(Status::Todo) {
-                EventKind::Failed
-            } else {
-                EventKind::Reported
-            },
-            message,
-            None,
-        )?;
-        crate::work::close(
-            &tx,
-            id,
-            if update.status == Some(Status::Todo) {
-                "failed"
-            } else {
-                "reported"
-            },
-            message,
-            git,
-        )?;
-        apply_update(&tx, id, &update, agent)?;
+        let (kind, outcome) = if update.status == Some(Status::Todo) {
+            (EventKind::Failed, SessionOutcome::Failed)
+        } else {
+            (EventKind::Reported, SessionOutcome::Reported)
+        };
+        record(&tx, id, agent, kind, message, None)?;
+        crate::work::close(&tx, id, outcome, message, git.as_ref())?;
+        apply_update(&tx, id, update, agent)?;
         if update.status == Some(Status::Done) {
             complete_ancestors(&tx, id, agent)?;
         }
@@ -328,27 +355,26 @@ impl Store {
     }
 }
 
-/// Whether an actor represents an agent rather than a person or GitHub sync.
-pub fn is_agent(actor: &str) -> bool {
-    !matches!(actor, "user" | "github")
-}
 pub(crate) fn agent_done_error() -> StoreError {
     StoreError::Invalid("AI cannot mark tasks done; use complete_task / task-tool done to send work for user review".into())
 }
 impl Store {
     /// Approves a report or returns it to todo with a reason.
+    ///
     /// # Errors
+    ///
     /// Rejects non-user actors, non-review tasks and blank rejection reasons.
     pub fn review_task(
         &self,
         id: i64,
-        actor: &str,
-        approve: bool,
+        actor: &Actor,
+        decision: ReviewDecision,
         comment: &str,
     ) -> Result<Task, StoreError> {
-        if actor != "user" {
+        if *actor != Actor::User {
             return Err(agent_done_error());
         }
+        let approve = decision == ReviewDecision::Approve;
         let comment = if approve && comment.trim().is_empty() {
             ""
         } else {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use task_tool::github::{GhError, GhRunner};
 use task_tool::mcp::McpServer;
-use task_tool::{NewTask, Scope, Store};
+use task_tool::{Actor, NewTask, Scope, Store};
 
 struct NoGh;
 
@@ -14,43 +14,58 @@ impl GhRunner for NoGh {
 }
 
 fn server() -> (McpServer, Store) {
-    let store = Store::open_in_memory().unwrap();
+    let store = Store::open_in_memory().expect("in-memory store opens");
     let mut server = McpServer::new(store.clone(), Arc::new(NoGh), None);
     let init = server
-        .handle(json!({
+        .handle(&json!({
             "jsonrpc": "2.0", "id": 0, "method": "initialize",
             "params": {"protocolVersion": "2025-06-18", "capabilities": {},
                        "clientInfo": {"name": "claude-code", "version": "1"}}
         }))
         .expect("initialize gets a response");
-    assert_eq!(init["result"]["protocolVersion"], "2025-06-18");
-    assert!(init["result"]["capabilities"]["tools"].is_object());
+    assert_eq!(
+        init["result"]["protocolVersion"], "2025-06-18",
+        "the requested protocol is accepted"
+    );
+    assert!(
+        init["result"]["capabilities"]["tools"].is_object(),
+        "the server offers tools"
+    );
     assert!(
         server
-            .handle(json!({"jsonrpc": "2.0", "method": "notifications/initialized"}))
+            .handle(&json!({"jsonrpc": "2.0", "method": "notifications/initialized"}))
             .is_none(),
         "notifications get no response"
     );
     (server, store)
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "callers build the arguments inline with json!"
+)]
 fn call(server: &mut McpServer, name: &str, arguments: Value) -> Value {
     let res = server
-        .handle(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        .handle(&json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                        "params": {"name": name, "arguments": arguments}}))
-        .unwrap();
+        .expect("tools/call gets a response");
     res["result"].clone()
 }
 
 fn payload(result: &Value) -> Value {
-    serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap()
+    serde_json::from_str(
+        result["content"][0]["text"]
+            .as_str()
+            .expect("tool result has text"),
+    )
+    .expect("tool result text is JSON")
 }
 
 #[test]
 fn lists_the_task_tools() {
     let (mut server, _) = server();
     let res = server
-        .handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
+        .handle(&json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
         .unwrap();
     let names: Vec<&str> = res["result"]["tools"]
         .as_array()
@@ -76,14 +91,14 @@ fn lists_the_task_tools() {
             "{expected} missing from {names:?}"
         );
     }
-    assert!(res["result"]["tools"][0]["inputSchema"]["type"] == "object");
+    assert_eq!(res["result"]["tools"][0]["inputSchema"]["type"], "object");
 }
 
 #[test]
 fn an_agent_splits_a_task_into_subtasks() {
     let (mut server, store) = server();
     let parent = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "Add login".into(),
             description: "OAuth via GitHub".into(),
             ..NewTask::default()
@@ -170,13 +185,13 @@ fn creates_and_updates_tasks() {
 fn offers_a_decompose_prompt() {
     let (mut server, store) = server();
     let task = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "Migrate DB".into(),
             ..NewTask::default()
         })
         .unwrap();
     let res = server
-        .handle(json!({"jsonrpc": "2.0", "id": 3, "method": "prompts/get",
+        .handle(&json!({"jsonrpc": "2.0", "id": 3, "method": "prompts/get",
                        "params": {"name": "decompose_task", "arguments": {"task_id": task.id.to_string()}}}))
         .unwrap();
     let text = res["result"]["messages"][0]["content"]["text"]
@@ -190,7 +205,7 @@ fn offers_a_decompose_prompt() {
 fn unknown_methods_and_bad_json_are_protocol_errors() {
     let (mut server, _) = server();
     let res = server
-        .handle(json!({"jsonrpc": "2.0", "id": 9, "method": "nope"}))
+        .handle(&json!({"jsonrpc": "2.0", "id": 9, "method": "nope"}))
         .unwrap();
     assert_eq!(res["error"]["code"], -32601);
     assert_eq!(res["id"], 9);
@@ -203,7 +218,7 @@ fn unknown_methods_and_bad_json_are_protocol_errors() {
 fn an_agent_reports_its_work_through_the_task_history() {
     let (mut server, store) = server();
     let task = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "Fix flaky test".into(),
             ..NewTask::default()
         })
@@ -247,13 +262,17 @@ fn an_agent_reports_its_work_through_the_task_history() {
 fn get_task_includes_why_earlier_runs_failed() {
     let (mut server, store) = server();
     let task = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "Docs".into(),
             ..NewTask::default()
         })
         .unwrap();
     store
-        .fail_task(task.id, "claude-code", "The docs folder is missing")
+        .fail_task(
+            task.id,
+            &Actor::from("claude-code"),
+            "The docs folder is missing",
+        )
         .unwrap();
 
     let detail = payload(&call(&mut server, "get_task", json!({"id": task.id})));
@@ -286,7 +305,7 @@ fn tasks_registered_by_an_agent_run_in_its_folder() {
 fn updates_from_an_agent_are_attributed_to_it() {
     let (mut server, store) = server();
     let task = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "T".into(),
             ..NewTask::default()
         })
@@ -306,7 +325,7 @@ fn updates_from_an_agent_are_attributed_to_it() {
 fn agent_cannot_mark_done_via_update() {
     let (mut server, store) = server();
     let task = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "Review required".into(),
             ..NewTask::default()
         })
@@ -333,7 +352,7 @@ fn agent_cannot_mark_done_via_update() {
 fn external_content_update_is_a_tool_error() {
     let (mut server, store) = server();
     let task = store
-        .create(NewTask {
+        .create(&NewTask {
             title: "Issue".into(),
             ..Default::default()
         })
@@ -367,4 +386,26 @@ fn external_content_update_is_a_tool_error() {
         json!({"id":task.id,"title":"Issue","description":"","status":"in_progress"}),
     );
     assert_ne!(result["isError"], true);
+}
+
+#[test]
+fn a_client_cannot_take_the_persons_name() {
+    for name in ["user", "github"] {
+        let store = Store::open_in_memory().unwrap();
+        let mut server = McpServer::new(store.clone(), Arc::new(NoGh), None);
+        server.handle(&json!({
+            "jsonrpc": "2.0", "id": 0, "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                       "clientInfo": {"name": name, "version": "1"}}
+        }));
+        let created = payload(&call(&mut server, "create_task", json!({"title": "Work"})));
+        assert_eq!(created["created_by"], "ai-agent", "{name}");
+        let id = created["id"].as_i64().unwrap();
+        let done = call(
+            &mut server,
+            "update_task",
+            json!({"id": id, "status": "done"}),
+        );
+        assert_eq!(done["isError"], true, "{name} must not finish work");
+    }
 }

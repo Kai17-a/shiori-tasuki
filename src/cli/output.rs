@@ -9,6 +9,15 @@ const TASK_FIELDS: &str = "id,parent_id,title,description,status,created_by,gith
 const EVENT_FIELDS: &str =
     "id,task_id,task_title,actor,kind,message,from_status,to_status,created_at";
 
+/// How plain-text output is laid out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Layout {
+    /// Padded columns and headings for a person at a terminal.
+    Aligned,
+    /// One tab-separated record per line for scripts and pipes.
+    Tabs,
+}
+
 fn fields(command: &Command) -> &'static str {
     match command {
         Command::View { .. } => "task,subtasks,history,sessions",
@@ -45,7 +54,11 @@ pub(super) fn validate(json: Option<&str>, command: &Command) -> Result<()> {
 
 pub(super) fn print(value: &Value, json: Option<&str>, command: &Command) -> Result<()> {
     let stdout = io::stdout();
-    let terminal = stdout.is_terminal();
+    let layout = if stdout.is_terminal() {
+        Layout::Aligned
+    } else {
+        Layout::Tabs
+    };
     let mut out = stdout.lock();
     if let Some(selection) = json {
         let selected = if selection.is_empty() {
@@ -64,8 +77,8 @@ pub(super) fn print(value: &Value, json: Option<&str>, command: &Command) -> Res
             value["instructions"].as_str().unwrap_or_default()
         )?,
         Command::View { .. } => {
-            tasks(&mut out, &[&value["task"]], terminal)?;
-            if terminal {
+            tasks(&mut out, &[&value["task"]], layout)?;
+            if layout == Layout::Aligned {
                 writeln!(
                     out,
                     "\nDescription:\n{}\nWorkdir: {}",
@@ -79,14 +92,14 @@ pub(super) fn print(value: &Value, json: Option<&str>, command: &Command) -> Res
             if !value["task"]["github"].is_null() {
                 writeln!(out, "github\t{}", cell(&value["task"]["github"]["url"]))?;
             }
-            if terminal {
+            if layout == Layout::Aligned {
                 writeln!(out, "\nSubtasks:")?;
             }
-            tasks(&mut out, &items(&value["subtasks"]), terminal)?;
-            if terminal {
+            tasks(&mut out, &items(&value["subtasks"]), layout)?;
+            if layout == Layout::Aligned {
                 writeln!(out, "\nHistory:")?;
             }
-            events(&mut out, &items(&value["history"]), terminal)?;
+            events(&mut out, &items(&value["history"]), layout)?;
             writeln!(
                 out,
                 "\nAI の作業記録:\n{}",
@@ -94,10 +107,10 @@ pub(super) fn print(value: &Value, json: Option<&str>, command: &Command) -> Res
             )?;
         }
         Command::Link { .. } => {
-            writeln!(out, "{}", serde_json::to_string_pretty(&value["sessions"])?)?
+            writeln!(out, "{}", serde_json::to_string_pretty(&value["sessions"])?)?;
         }
         Command::Note { .. } | Command::Activity { .. } => {
-            events(&mut out, &items(value), terminal)?
+            events(&mut out, &items(value), layout)?;
         }
         Command::Stats => {
             let rows: Vec<Vec<String>> = value
@@ -106,10 +119,10 @@ pub(super) fn print(value: &Value, json: Option<&str>, command: &Command) -> Res
                 .flatten()
                 .map(|(k, v)| vec![k.clone(), cell(v)])
                 .collect();
-            table(&mut out, &rows, terminal)?;
+            table(&mut out, &rows, layout)?;
         }
         Command::Delete { .. } => {
-            if terminal {
+            if layout == Layout::Aligned {
                 writeln!(
                     out,
                     "Deleted task #{} and its descendants",
@@ -119,7 +132,7 @@ pub(super) fn print(value: &Value, json: Option<&str>, command: &Command) -> Res
                 writeln!(out, "{}\tdeleted", value["deleted"]["id"])?;
             }
         }
-        _ => tasks(&mut out, &items(value), terminal)?,
+        _ => tasks(&mut out, &items(value), layout)?,
     }
     Ok(())
 }
@@ -156,7 +169,7 @@ fn cell(value: &Value) -> String {
     }
 }
 
-fn tasks(out: &mut impl Write, values: &[&Value], terminal: bool) -> Result<()> {
+fn tasks(out: &mut impl Write, values: &[&Value], layout: Layout) -> Result<()> {
     let rows: Vec<Vec<String>> = values
         .iter()
         .map(|v| {
@@ -165,10 +178,10 @@ fn tasks(out: &mut impl Write, values: &[&Value], terminal: bool) -> Result<()> 
                 .to_vec()
         })
         .collect();
-    table(out, &rows, terminal)
+    table(out, &rows, layout)
 }
 
-fn events(out: &mut impl Write, values: &[&Value], terminal: bool) -> Result<()> {
+fn events(out: &mut impl Write, values: &[&Value], layout: Layout) -> Result<()> {
     let rows: Vec<Vec<String>> = values
         .iter()
         .map(|v| {
@@ -185,11 +198,11 @@ fn events(out: &mut impl Write, values: &[&Value], terminal: bool) -> Result<()>
             .to_vec()
         })
         .collect();
-    table(out, &rows, terminal)
+    table(out, &rows, layout)
 }
 
-fn table(out: &mut impl Write, rows: &[Vec<String>], terminal: bool) -> Result<()> {
-    if !terminal {
+fn table(out: &mut impl Write, rows: &[Vec<String>], layout: Layout) -> Result<()> {
+    if layout == Layout::Tabs {
         for row in rows {
             writeln!(out, "{}", row.join("\t"))?;
         }

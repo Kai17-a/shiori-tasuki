@@ -1,0 +1,9 @@
+# BeautifulRust clippy configuration (lints/clippy.toml), next to the [lints] table in Cargo.toml.
+
+# Flag any function with a bool parameter: use a two-variant enum or two methods instead.
+max-fn-params-bools = 0
+
+# Allow unwrap, expect, and printing in tests, where a panic is the assertion.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-print-in-tests = true

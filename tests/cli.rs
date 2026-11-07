@@ -7,7 +7,7 @@ use tempfile::TempDir;
 struct Cli(TempDir);
 impl Cli {
     fn new() -> Self {
-        Self(tempfile::tempdir().unwrap())
+        Self(tempfile::tempdir().expect("temporary folder is created"))
     }
     fn command(&self) -> Command {
         let mut c = Command::new(env!("CARGO_BIN_EXE_task-tool"));
@@ -28,7 +28,7 @@ impl Cli {
         c
     }
     fn run(&self, args: &[&str]) -> Output {
-        self.command().args(args).output().unwrap()
+        self.command().args(args).output().expect("task-tool runs")
     }
     fn json(&self, args: &[&str]) -> Value {
         let o = self.run(args);
@@ -37,7 +37,7 @@ impl Cli {
             "{args:?}: {}",
             String::from_utf8_lossy(&o.stderr)
         );
-        serde_json::from_slice(&o.stdout).unwrap()
+        serde_json::from_slice(&o.stdout).expect("task-tool prints JSON")
     }
 }
 

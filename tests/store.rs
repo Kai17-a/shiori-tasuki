@@ -1,4 +1,4 @@
-use task_tool::{NewSubtask, NewTask, Scope, Status, Store, StoreError, TaskUpdate};
+use task_tool::{Actor, NewSubtask, NewTask, Scope, Status, Store, StoreError, TaskUpdate};
 
 fn store() -> Store {
     Store::open_in_memory().expect("in-memory store opens")
@@ -14,7 +14,7 @@ fn new_task(title: &str) -> NewTask {
 #[test]
 fn creates_a_local_task_with_defaults() {
     let store = store();
-    let task = store.create(new_task("  Write docs  ")).unwrap();
+    let task = store.create(&new_task("  Write docs  ")).unwrap();
 
     assert_eq!(task.title, "Write docs", "title is trimmed");
     assert_eq!(task.status, Status::Todo);
@@ -26,14 +26,14 @@ fn creates_a_local_task_with_defaults() {
 
 #[test]
 fn rejects_an_empty_title() {
-    let err = store().create(new_task("   ")).unwrap_err();
+    let err = store().create(&new_task("   ")).unwrap_err();
     assert!(matches!(err, StoreError::Invalid(_)), "got {err:?}");
 }
 
 #[test]
 fn rejects_a_missing_parent() {
     let err = store()
-        .create(NewTask {
+        .create(&NewTask {
             parent_id: Some(99),
             ..new_task("child")
         })
@@ -44,12 +44,12 @@ fn rejects_a_missing_parent() {
 #[test]
 fn creates_subtasks_atomically_and_counts_them_on_the_parent() {
     let store = store();
-    let parent = store.create(new_task("Release v1")).unwrap();
+    let parent = store.create(&new_task("Release v1")).unwrap();
 
     let children = store
         .create_subtasks(
             parent.id,
-            vec![
+            &[
                 NewSubtask {
                     title: "Write changelog".into(),
                     description: "list user-facing changes".into(),
@@ -59,7 +59,7 @@ fn creates_subtasks_atomically_and_counts_them_on_the_parent() {
                     description: String::new(),
                 },
             ],
-            "claude-code",
+            &Actor::from("claude-code"),
         )
         .unwrap();
 
@@ -70,7 +70,7 @@ fn creates_subtasks_atomically_and_counts_them_on_the_parent() {
     store
         .update(
             children[0].id,
-            TaskUpdate {
+            &TaskUpdate {
                 status: Some(Status::Done),
                 ..TaskUpdate::default()
             },
@@ -84,12 +84,12 @@ fn creates_subtasks_atomically_and_counts_them_on_the_parent() {
 #[test]
 fn subtask_batch_with_an_invalid_item_creates_nothing() {
     let store = store();
-    let parent = store.create(new_task("Parent")).unwrap();
+    let parent = store.create(&new_task("Parent")).unwrap();
 
     let err = store
         .create_subtasks(
             parent.id,
-            vec![
+            &[
                 NewSubtask {
                     title: "ok".into(),
                     description: String::new(),
@@ -99,7 +99,7 @@ fn subtask_batch_with_an_invalid_item_creates_nothing() {
                     description: String::new(),
                 },
             ],
-            "ai",
+            &Actor::from("ai"),
         )
         .unwrap_err();
 
@@ -110,17 +110,19 @@ fn subtask_batch_with_an_invalid_item_creates_nothing() {
 #[test]
 fn subtasks_require_an_existing_parent_and_at_least_one_item() {
     let store = store();
-    let err = store.create_subtasks(7, vec![], "ai").unwrap_err();
+    let err = store
+        .create_subtasks(7, &[], &Actor::from("ai"))
+        .unwrap_err();
     assert!(matches!(err, StoreError::Invalid(_)), "got {err:?}");
 
     let err = store
         .create_subtasks(
             7,
-            vec![NewSubtask {
+            &[NewSubtask {
                 title: "x".into(),
                 description: String::new(),
             }],
-            "ai",
+            &Actor::from("ai"),
         )
         .unwrap_err();
     assert!(matches!(err, StoreError::NotFound(7)), "got {err:?}");
@@ -129,10 +131,10 @@ fn subtasks_require_an_existing_parent_and_at_least_one_item() {
 #[test]
 fn lists_by_scope() {
     let store = store();
-    let a = store.create(new_task("A")).unwrap();
-    let b = store.create(new_task("B")).unwrap();
+    let a = store.create(&new_task("A")).unwrap();
+    let b = store.create(&new_task("B")).unwrap();
     store
-        .create(NewTask {
+        .create(&NewTask {
             parent_id: Some(a.id),
             ..new_task("A-1")
         })
@@ -152,12 +154,12 @@ fn lists_by_scope() {
 #[test]
 fn updates_fields_and_reports_missing_tasks() {
     let store = store();
-    let task = store.create(new_task("Old")).unwrap();
+    let task = store.create(&new_task("Old")).unwrap();
 
     let updated = store
         .update(
             task.id,
-            TaskUpdate {
+            &TaskUpdate {
                 title: Some("New".into()),
                 description: Some("details".into()),
                 status: Some(Status::InProgress),
@@ -169,16 +171,16 @@ fn updates_fields_and_reports_missing_tasks() {
     assert_eq!(updated.description, "details");
     assert_eq!(updated.status, Status::InProgress);
 
-    let err = store.update(404, TaskUpdate::default()).unwrap_err();
+    let err = store.update(404, &TaskUpdate::default()).unwrap_err();
     assert!(matches!(err, StoreError::NotFound(404)), "got {err:?}");
 }
 
 #[test]
 fn deleting_a_parent_deletes_its_subtasks() {
     let store = store();
-    let parent = store.create(new_task("Parent")).unwrap();
+    let parent = store.create(&new_task("Parent")).unwrap();
     let child = store
-        .create(NewTask {
+        .create(&NewTask {
             parent_id: Some(parent.id),
             ..new_task("Child")
         })
@@ -212,7 +214,7 @@ fn persists_to_a_file() {
     let path = dir.path().join("nested").join("tasks.db");
     let id = Store::open(&path)
         .unwrap()
-        .create(new_task("Persisted"))
+        .create(&new_task("Persisted"))
         .unwrap()
         .id;
 
@@ -224,27 +226,27 @@ fn set_status(store: &Store, id: i64, status: Status) -> task_tool::Task {
     store
         .update(
             id,
-            TaskUpdate {
+            &TaskUpdate {
                 status: Some(status),
                 ..TaskUpdate::default()
             },
         )
-        .unwrap()
+        .expect("status changes")
 }
 
 #[test]
 fn records_when_a_task_is_completed_and_clears_it_on_reopen() {
     let store = store();
-    let task = store.create(new_task("Finish")).unwrap();
+    let task = store.create(&new_task("Finish")).unwrap();
     assert!(task.completed_at.is_none());
 
     let done = set_status(&store, task.id, Status::Done);
-    let completed_at = done.completed_at.clone().expect("set when done");
+    let completed_at = done.completed_at.expect("set when done");
 
     let edited = store
         .update(
             task.id,
-            TaskUpdate {
+            &TaskUpdate {
                 title: Some("Finish it".into()),
                 ..TaskUpdate::default()
             },
@@ -259,7 +261,7 @@ fn records_when_a_task_is_completed_and_clears_it_on_reopen() {
     );
 
     let created_done = store
-        .create(NewTask {
+        .create(&NewTask {
             status: Some(Status::Done),
             ..new_task("Already done")
         })
@@ -309,11 +311,11 @@ fn migrates_a_version_1_database() {
 #[test]
 fn summarises_tasks_for_the_dashboard() {
     let store = store();
-    let parent = store.create(new_task("Parent")).unwrap();
+    let parent = store.create(&new_task("Parent")).unwrap();
     let kids = store
         .create_subtasks(
             parent.id,
-            vec![
+            &[
                 NewSubtask {
                     title: "k1".into(),
                     description: String::new(),
@@ -323,13 +325,13 @@ fn summarises_tasks_for_the_dashboard() {
                     description: String::new(),
                 },
             ],
-            "claude-code",
+            &Actor::from("claude-code"),
         )
         .unwrap();
     set_status(&store, kids[0].id, Status::Done);
-    let review = store.create(new_task("Review me")).unwrap();
+    let review = store.create(&new_task("Review me")).unwrap();
     set_status(&store, review.id, Status::Review);
-    let linked = store.create(new_task("From GitHub")).unwrap();
+    let linked = store.create(&new_task("From GitHub")).unwrap();
     store
         .link_github(
             linked.id,
@@ -384,7 +386,7 @@ fn opening_existing_database_preserves_historical_execution_data() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("existing.db");
     let store = Store::open(&path).unwrap();
-    let task = store.create(new_task("Historical task")).unwrap();
+    let task = store.create(&new_task("Historical task")).unwrap();
     drop(store);
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
@@ -412,7 +414,7 @@ fn opening_existing_database_preserves_historical_execution_data() {
 #[test]
 fn github_content_is_owned_by_source_even_for_published_local_tasks() {
     let store = store();
-    let task = store.create(new_task("Original")).unwrap();
+    let task = store.create(&new_task("Original")).unwrap();
     let task = store
         .link_github(
             task.id,
@@ -434,7 +436,7 @@ fn github_content_is_owned_by_source_even_for_published_local_tasks() {
         },
     ] {
         assert!(matches!(
-            store.update(task.id, update),
+            store.update(task.id, &update),
             Err(StoreError::ExternalContent)
         ));
         assert_eq!(store.get(task.id).unwrap().unwrap(), task);
@@ -442,9 +444,9 @@ fn github_content_is_owned_by_source_even_for_published_local_tasks() {
     let updated = store
         .update(
             task.id,
-            TaskUpdate {
+            &TaskUpdate {
                 title: Some(task.title.clone()),
-                description: Some(task.description.clone()),
+                description: Some(task.description),
                 status: Some(Status::InProgress),
                 assignee: Some("codex".into()),
             },

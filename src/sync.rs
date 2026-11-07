@@ -34,7 +34,18 @@ pub struct Syncer {
     status: Arc<Mutex<SyncStatus>>,
 }
 
+impl std::fmt::Debug for Syncer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The gh runner is a trait object without Debug; the status says what matters.
+        f.debug_struct("Syncer")
+            .field("status", &self.status())
+            .finish_non_exhaustive()
+    }
+}
+
 impl Syncer {
+    /// A syncer for `store` that calls GitHub through `gh`; nothing runs until
+    /// [`Syncer::run_once`] or [`Syncer::spawn`].
     pub fn new(store: Store, gh: Arc<dyn GhRunner + Send + Sync>) -> Self {
         Self {
             store,
@@ -50,6 +61,7 @@ impl Syncer {
         self.status.lock().expect("sync status lock poisoned")
     }
 
+    /// A copy of how the recent runs went.
     pub fn status(&self) -> SyncStatus {
         self.lock().clone()
     }
@@ -63,10 +75,11 @@ impl Syncer {
             }
             status.running = true;
         }
+        // Clears `running` even if the sync panics, so later runs are not skipped forever.
+        let _running = RunningGuard(self);
         let result = github::sync_assigned(&self.store, self.gh.as_ref());
         let now = unix_now();
         let mut status = self.lock();
-        status.running = false;
         status.last_finished_at = Some(now);
         match result {
             Ok(report) => {
@@ -94,6 +107,18 @@ impl Syncer {
                 }
             }
         })
+    }
+}
+
+/// Marks the sync as no longer running when dropped.
+struct RunningGuard<'a>(&'a Syncer);
+
+impl Drop for RunningGuard<'_> {
+    fn drop(&mut self) {
+        // A poisoned lock means another thread already panicked; nothing is left to reset.
+        if let Ok(mut status) = self.0.status.lock() {
+            status.running = false;
+        }
     }
 }
 

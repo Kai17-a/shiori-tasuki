@@ -1,5 +1,7 @@
 use task_tool::activity::EventKind;
-use task_tool::{NewSubtask, NewTask, Status, Store, StoreError, TaskUpdate};
+use task_tool::{
+    Actor, NewSubtask, NewTask, ReviewDecision, Status, Store, StoreError, TaskUpdate,
+};
 
 fn store() -> Store {
     Store::open_in_memory().expect("in-memory store opens")
@@ -7,11 +9,11 @@ fn store() -> Store {
 
 fn task(store: &Store, title: &str) -> task_tool::Task {
     store
-        .create(NewTask {
+        .create(&NewTask {
             title: title.into(),
             ..NewTask::default()
         })
-        .unwrap()
+        .expect("test task is created")
 }
 
 fn status(s: Status) -> TaskUpdate {
@@ -27,16 +29,20 @@ fn records_who_created_and_changed_a_task() {
     let t = task(&store, "Write report");
 
     store
-        .update_as(t.id, status(Status::InProgress), "claude-code")
+        .update_as(
+            t.id,
+            &status(Status::InProgress),
+            &Actor::from("claude-code"),
+        )
         .unwrap();
     store
         .update_as(
             t.id,
-            TaskUpdate {
+            &TaskUpdate {
                 title: Some("Write the report".into()),
                 ..TaskUpdate::default()
             },
-            "user",
+            &Actor::from("user"),
         )
         .unwrap();
 
@@ -63,7 +69,9 @@ fn records_who_created_and_changed_a_task() {
 fn an_update_that_changes_nothing_records_nothing() {
     let store = store();
     let t = task(&store, "Same");
-    store.update_as(t.id, status(Status::Todo), "user").unwrap();
+    store
+        .update_as(t.id, &status(Status::Todo), &Actor::from("user"))
+        .unwrap();
     assert_eq!(store.events_for(t.id, 10).unwrap().len(), 1, "only created");
 }
 
@@ -75,11 +83,11 @@ fn assigns_and_clears_the_assignee() {
     let assigned = store
         .update_as(
             t.id,
-            TaskUpdate {
+            &TaskUpdate {
                 assignee: Some("codex".into()),
                 ..TaskUpdate::default()
             },
-            "codex",
+            &Actor::from("codex"),
         )
         .unwrap();
     assert_eq!(assigned.assignee.as_deref(), Some("codex"));
@@ -87,11 +95,11 @@ fn assigns_and_clears_the_assignee() {
     let cleared = store
         .update_as(
             t.id,
-            TaskUpdate {
+            &TaskUpdate {
                 assignee: Some(String::new()),
                 ..TaskUpdate::default()
             },
-            "user",
+            &Actor::from("user"),
         )
         .unwrap();
     assert!(cleared.assignee.is_none());
@@ -113,17 +121,23 @@ fn notes_are_validated_and_recorded() {
     let t = task(&store, "Investigate");
 
     let note = store
-        .add_note(t.id, "claude-code", "  3 tests fail in auth  ")
+        .add_note(
+            t.id,
+            &Actor::from("claude-code"),
+            "  3 tests fail in auth  ",
+        )
         .unwrap();
     assert_eq!(note.kind, EventKind::Note);
     assert_eq!(note.message, "3 tests fail in auth");
 
     assert!(matches!(
-        store.add_note(t.id, "user", "   ").unwrap_err(),
+        store
+            .add_note(t.id, &Actor::from("user"), "   ")
+            .unwrap_err(),
         StoreError::Invalid(_)
     ));
     assert!(matches!(
-        store.add_note(404, "user", "hi").unwrap_err(),
+        store.add_note(404, &Actor::from("user"), "hi").unwrap_err(),
         StoreError::NotFound(404)
     ));
 }
@@ -135,7 +149,7 @@ fn splitting_a_task_is_recorded_on_the_parent_and_each_child() {
     let kids = store
         .create_subtasks(
             parent.id,
-            vec![
+            &[
                 NewSubtask {
                     title: "a".into(),
                     description: String::new(),
@@ -145,7 +159,7 @@ fn splitting_a_task_is_recorded_on_the_parent_and_each_child() {
                     description: String::new(),
                 },
             ],
-            "claude-code",
+            &Actor::from("claude-code"),
         )
         .unwrap();
 
@@ -164,7 +178,9 @@ fn activity_feed_pages_backwards_and_reports_the_latest_id() {
     let store = store();
     let a = task(&store, "A");
     let b = task(&store, "B");
-    store.add_note(a.id, "codex", "progress").unwrap();
+    store
+        .add_note(a.id, &Actor::from("codex"), "progress")
+        .unwrap();
 
     let latest = store.latest_event_id().unwrap();
     let page = store.activity(2, None).unwrap();
@@ -182,7 +198,7 @@ fn activity_feed_pages_backwards_and_reports_the_latest_id() {
 fn deleting_a_task_removes_its_history() {
     let store = store();
     let t = task(&store, "Temp");
-    store.add_note(t.id, "user", "x").unwrap();
+    store.add_note(t.id, &Actor::from("user"), "x").unwrap();
     store.delete(t.id).unwrap();
     assert!(store.activity(10, None).unwrap().is_empty());
 }
@@ -195,13 +211,26 @@ fn summarises_agents_and_stalled_work() {
     let busy = task(&store, "Busy");
     let stuck = task(&store, "Stuck");
     let finished = task(&store, "Finished");
-    store.start_task(busy.id, "claude-code").unwrap();
-    store.start_task(stuck.id, "codex").unwrap();
-    store.start_task(finished.id, "claude-code").unwrap();
     store
-        .complete_task(finished.id, "claude-code", "Verified")
+        .start_task(busy.id, &Actor::from("claude-code"), None)
         .unwrap();
-    store.review_task(finished.id, "user", true, "").unwrap();
+    store
+        .start_task(stuck.id, &Actor::from("codex"), None)
+        .unwrap();
+    store
+        .start_task(finished.id, &Actor::from("claude-code"), None)
+        .unwrap();
+    store
+        .complete_task(finished.id, &Actor::from("claude-code"), "Verified")
+        .unwrap();
+    store
+        .review_task(
+            finished.id,
+            &Actor::from("user"),
+            ReviewDecision::Approve,
+            "",
+        )
+        .unwrap();
     // Make the "stuck" task look untouched for three hours.
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
@@ -250,9 +279,13 @@ fn summarises_agents_and_stalled_work() {
 fn work_finished_by_the_user_counts_as_done_for_the_assigned_agent() {
     let store = store();
     let t = task(&store, "Upgrade deps");
-    store.start_task(t.id, "claude-code").unwrap();
+    store
+        .start_task(t.id, &Actor::from("claude-code"), None)
+        .unwrap();
     // A person can finish work that was assigned to an agent.
-    store.update_as(t.id, status(Status::Done), "user").unwrap();
+    store
+        .update_as(t.id, &status(Status::Done), &Actor::from("user"))
+        .unwrap();
 
     let stats = store.stats().unwrap();
     let claude = stats

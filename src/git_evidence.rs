@@ -16,6 +16,31 @@ pub struct GitEvidence {
     pub errors: Vec<String>,
     pub truncated: bool,
 }
+
+/// Most bytes kept from one git command's output.
+const OUTPUT_LIMIT: usize = 128 * 1024;
+/// Most entries kept in each evidence list.
+const LIST_LIMIT: usize = 100;
+
+/// Drains the whole pipe so git never blocks on a full buffer, keeping only the first
+/// [`OUTPUT_LIMIT`] bytes.
+fn read(mut input: impl Read) -> String {
+    let mut bytes = Vec::new();
+    let mut buf = [0; 8192];
+    loop {
+        match input.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                let keep = n.min(OUTPUT_LIMIT.saturating_sub(bytes.len()));
+                bytes.extend_from_slice(&buf[..keep]);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => break,
+        }
+    }
+    String::from_utf8_lossy(&bytes).trim().to_owned()
+}
+
 fn git(dir: &str, args: &[&str]) -> Result<String, String> {
     // Evidence is read-only: keep repository config from starting other programs
     // (fsmonitor hooks, external diff drivers, textconv filters).
@@ -33,18 +58,6 @@ fn git(dir: &str, args: &[&str]) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
     let stdout = child.stdout.take().ok_or("missing stdout")?;
     let stderr = child.stderr.take().ok_or("missing stderr")?;
-    fn read(mut input: impl Read) -> String {
-        let mut bytes = Vec::new();
-        let mut buf = [0; 8192];
-        while let Ok(n) = input.read(&mut buf) {
-            if n == 0 {
-                break;
-            }
-            let keep = n.min(131072usize.saturating_sub(bytes.len()));
-            bytes.extend_from_slice(&buf[..keep]);
-        }
-        String::from_utf8_lossy(&bytes).trim().to_owned()
-    }
     let out = std::thread::spawn(move || read(stdout));
     let err = std::thread::spawn(move || read(stderr));
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -67,6 +80,13 @@ fn git(dir: &str, args: &[&str]) -> Result<String, String> {
         Err(stderr)
     }
 }
+/// The first [`LIST_LIMIT`] lines of `s`, marking `truncated` when lines or bytes were cut.
+fn lines(s: &str, truncated: &mut bool) -> Vec<String> {
+    // Output cut at OUTPUT_LIMIT may lose a little trailing space to trim().
+    *truncated |= s.lines().count() > LIST_LIMIT || s.len() + 128 >= OUTPUT_LIMIT;
+    s.lines().take(LIST_LIMIT).map(str::to_owned).collect()
+}
+
 /// Captures a repository, returning no evidence for a non-repository folder.
 pub fn capture(workdir: Option<&str>, start: Option<&str>) -> Option<GitEvidence> {
     let dir = workdir?;
@@ -92,7 +112,7 @@ pub fn capture(workdir: Option<&str>, start: Option<&str>) -> Option<GitEvidence
     let commits = if let Some(start) = start {
         run(&[
             "log",
-            "-101",
+            "-101", // one more than LIST_LIMIT, so a longer log is marked truncated
             "--format=%H %s",
             &format!("{start}..HEAD"),
             "--",
@@ -121,14 +141,9 @@ pub fn capture(workdir: Option<&str>, start: Option<&str>) -> Option<GitEvidence
         "--",
     ]);
     let untracked = run(&["ls-files", "--others", "--exclude-standard"]);
-    fn lines(s: String, truncated: &mut bool) -> Vec<String> {
-        let all: Vec<_> = s.lines().map(str::to_owned).collect();
-        *truncated |= all.len() > 100 || s.len() >= 131000;
-        all.into_iter().take(100).collect()
-    }
-    g.commits = lines(commits, &mut g.truncated);
-    g.files = lines(files, &mut g.truncated);
-    g.uncommitted = lines(uncommitted, &mut g.truncated);
-    g.untracked = lines(untracked, &mut g.truncated);
+    g.commits = lines(&commits, &mut g.truncated);
+    g.files = lines(&files, &mut g.truncated);
+    g.uncommitted = lines(&uncommitted, &mut g.truncated);
+    g.untracked = lines(&untracked, &mut g.truncated);
     Some(g)
 }

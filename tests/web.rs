@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use task_tool::github::{GhError, GhRunner};
 use task_tool::sync::Syncer;
 use task_tool::web::{self, AppState, HostPolicy};
-use task_tool::{NewSubtask, NewTask, Store};
+use task_tool::{Actor, NewSubtask, NewTask, Store};
 use tower::ServiceExt;
 
 #[derive(Default)]
@@ -19,10 +19,10 @@ struct FakeGh {
 
 impl GhRunner for FakeGh {
     fn run(&self, args: &[String]) -> Result<String, GhError> {
-        self.calls.lock().unwrap().push(args.to_vec());
+        self.calls.lock().expect("fake gh lock").push(args.to_vec());
         self.reply
             .lock()
-            .unwrap()
+            .expect("fake gh lock")
             .take()
             .ok_or_else(|| GhError::Failed("no reply queued".into()))
     }
@@ -37,8 +37,8 @@ struct App {
 
 fn app() -> App {
     let gh = Arc::new(FakeGh::default());
-    let store = Store::open_in_memory().unwrap();
-    let sync = Syncer::new(store.clone(), gh.clone());
+    let store = Store::open_in_memory().expect("in-memory store opens");
+    let sync = Syncer::new(store.clone(), Arc::<FakeGh>::clone(&gh));
     let state = AppState {
         sync: sync.clone(),
         store: store.clone(),
@@ -55,12 +55,12 @@ fn app() -> App {
 
 fn add(store: &Store, title: &str) -> task_tool::Task {
     store
-        .create(NewTask {
+        .create(&NewTask {
             title: title.into(),
             workdir: Some("/work".into()),
             ..NewTask::default()
         })
-        .unwrap()
+        .expect("test task is created")
 }
 
 impl App {
@@ -79,11 +79,16 @@ impl App {
         let res = self
             .router
             .clone()
-            .oneshot(req.body(body).unwrap())
+            .oneshot(req.body(body).expect("request builds"))
             .await
-            .unwrap();
+            .expect("router answers");
         let status = res.status();
-        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let bytes = res
+            .into_body()
+            .collect()
+            .await
+            .expect("response body reads")
+            .to_bytes();
         let value = if bytes.is_empty() {
             Value::Null
         } else {
@@ -191,8 +196,12 @@ impl App {
             .header(header::HOST, "127.0.0.1:7878")
             .header(header::CONTENT_TYPE, "application/octet-stream")
             .body(Body::from(body))
-            .unwrap();
-        self.router.clone().oneshot(req).await.unwrap()
+            .expect("request builds");
+        self.router
+            .clone()
+            .oneshot(req)
+            .await
+            .expect("router answers")
     }
 }
 
@@ -309,15 +318,19 @@ async fn shows_tasks_with_subtasks_and_history() {
     app.store
         .create_subtasks(
             parent.id,
-            vec![NewSubtask {
+            &[NewSubtask {
                 title: "Changelog".into(),
                 description: String::new(),
             }],
-            "claude-code",
+            &Actor::from("claude-code"),
         )
         .unwrap();
     app.store
-        .add_note(parent.id, "claude-code", "split into one step")
+        .add_note(
+            parent.id,
+            &Actor::from("claude-code"),
+            "split into one step",
+        )
         .unwrap();
 
     let (_, top) = app.send("GET", "/api/tasks", None).await;
@@ -347,13 +360,15 @@ async fn shows_tasks_with_subtasks_and_history() {
 async fn reports_dashboard_stats_and_activity() {
     let app = app();
     let task = add(&app.store, "T");
-    app.store.start_task(task.id, "claude-code").unwrap();
+    app.store
+        .start_task(task.id, &Actor::from("claude-code"), None)
+        .unwrap();
 
-    let (status, stats) = app.send("GET", "/api/stats", None).await;
-    assert_eq!(status, StatusCode::OK, "{stats}");
-    assert_eq!(stats["by_status"]["in_progress"], 1);
-    assert_eq!(stats["agents"][0]["name"], "claude-code");
-    assert!(stats.get("review_queue").is_none());
+    let (status, dashboard) = app.send("GET", "/api/stats", None).await;
+    assert_eq!(status, StatusCode::OK, "{dashboard}");
+    assert_eq!(dashboard["by_status"]["in_progress"], 1);
+    assert_eq!(dashboard["agents"][0]["name"], "claude-code");
+    assert!(dashboard.get("review_queue").is_none());
 
     let (_, latest) = app.send("GET", "/api/activity/latest", None).await;
     let (_, feed) = app.send("GET", "/api/activity?limit=1", None).await;
@@ -526,24 +541,26 @@ async fn review_api_returns_sessions_timeline_and_records_decisions() {
         .store
         .create_subtasks(
             root.id,
-            vec![NewSubtask {
+            &[NewSubtask {
                 title: "Child".into(),
                 description: String::new(),
             }],
-            "agent",
+            &Actor::from("agent"),
         )
         .unwrap()
         .remove(0);
-    app.store.start_task(child.id, "agent").unwrap();
     app.store
-        .complete_task(child.id, "agent", "Verified\nMore detail")
+        .start_task(child.id, &Actor::from("agent"), None)
+        .unwrap();
+    app.store
+        .complete_task(child.id, &Actor::from("agent"), "Verified\nMore detail")
         .unwrap();
     let (_, detail) = app
         .send("GET", &format!("/api/tasks/{}", child.id), None)
         .await;
     assert_eq!(detail["sessions"][0]["outcome"], "reported");
-    let (_, stats) = app.send("GET", "/api/stats", None).await;
-    assert_eq!(stats["awaiting_review"][0]["summary"], "Verified");
+    let (_, dashboard) = app.send("GET", "/api/stats", None).await;
+    assert_eq!(dashboard["awaiting_review"][0]["summary"], "Verified");
     let (status, _) = app
         .send(
             "POST",
@@ -561,9 +578,11 @@ async fn review_api_returns_sessions_timeline_and_records_decisions() {
         .await;
     assert_eq!(rejected["status"], "todo");
     assert!(rejected["assignee"].is_null());
-    app.store.start_task(child.id, "agent").unwrap();
     app.store
-        .complete_task(child.id, "agent", "Retested")
+        .start_task(child.id, &Actor::from("agent"), None)
+        .unwrap();
+    app.store
+        .complete_task(child.id, &Actor::from("agent"), "Retested")
         .unwrap();
     let (_, approved) = app
         .send(
@@ -619,4 +638,48 @@ async fn external_content_patch_conflicts_but_status_and_unchanged_content_work(
         )
         .await;
     assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn review_api_answers_malformed_bodies_with_a_json_error() {
+    let app = app();
+    let task = add(&app.store, "Waiting");
+    for body in [
+        json!({"decision": "maybe"}),
+        json!({"comment": "no decision"}),
+    ] {
+        let (status, error) = app
+            .send(
+                "POST",
+                &format!("/api/tasks/{}/review", task.id),
+                Some(body),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(error["error"].is_string(), "{error}");
+    }
+}
+
+/// A `gh` stand-in whose every call panics, as a bug inside the sync would.
+struct PanickingGh;
+
+impl GhRunner for PanickingGh {
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "the panic is what this fake tests"
+    )]
+    fn run(&self, _: &[String]) -> Result<String, GhError> {
+        panic!("sync bug");
+    }
+}
+
+#[test]
+fn a_panicking_sync_does_not_block_later_runs() {
+    let sync = Syncer::new(Store::open_in_memory().unwrap(), Arc::new(PanickingGh));
+    let run = sync.clone();
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run.run_once())).is_err(),
+        "the fake gh panics"
+    );
+    assert!(!sync.status().running, "a later run must not be skipped");
 }

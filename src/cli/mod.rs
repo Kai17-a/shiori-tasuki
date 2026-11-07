@@ -7,16 +7,23 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use serde_json::json;
+use serde_json::{Value, json};
 use task_tool::github::{self, GhCli};
-use task_tool::{INSTRUCTIONS, NewSubtask, NewTask, Scope, Status, Store, Task, TaskUpdate};
+use task_tool::{
+    Actor, INSTRUCTIONS, NewSubtask, NewTask, ReviewDecision, Scope, Status, Store, Task,
+    TaskUpdate,
+};
 
 /// Personal task list for people and AI agents. Writes are non-interactive.
 ///
 /// Use guide for the agent workflow. serve and mcp sync your GitHub issues in the background.
 #[derive(Debug, Parser)]
 #[command(version)]
-pub struct Cli {
+#[expect(
+    clippy::doc_markdown,
+    reason = "clap prints these doc comments as --help text, where backticks would show"
+)]
+pub(crate) struct Cli {
     /// Database: --db > TASK_TOOL_DB > $XDG_DATA_HOME/task-tool/tasks.db > $HOME/.local/share/task-tool/tasks.db. Parent folders are created.
     #[arg(long, global = true, env = "TASK_TOOL_DB")]
     db: Option<PathBuf>,
@@ -25,16 +32,20 @@ pub struct Cli {
     actor: Option<String>,
     /// GitHub repository (owner/name): list filter or default for gh push.
     #[arg(long, global = true, env = "TASK_TOOL_REPO")]
-    pub repo: Option<String>,
+    pub(crate) repo: Option<String>,
     /// Print JSON; optionally select comma-separated top-level fields. View fields: task,subtasks,history.
     #[arg(long, global = true, num_args = 0..=1, default_missing_value = "", value_name = "FIELDS")]
     json: Option<String>,
     #[command(subcommand)]
-    pub command: Command,
+    pub(crate) command: Command,
 }
 
 #[derive(Debug, Subcommand)]
-pub enum Command {
+#[expect(
+    clippy::doc_markdown,
+    reason = "clap prints these doc comments as --help text, where backticks would show"
+)]
+pub(crate) enum Command {
     /// Serve the dashboard and JSON API; sync GitHub issues every 5 minutes.
     Serve {
         /// Listen address; loopback is recommended because the API has no login.
@@ -176,7 +187,11 @@ pub enum Command {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum GhCommand {
+#[expect(
+    clippy::doc_markdown,
+    reason = "clap prints these doc comments as --help text, where backticks would show"
+)]
+pub(crate) enum GhCommand {
     /// Create an issue assigned to you and link the resulting task.
     Push {
         id: i64,
@@ -187,7 +202,7 @@ pub enum GhCommand {
 }
 
 impl Cli {
-    pub fn database(&self) -> Result<PathBuf> {
+    pub(crate) fn database(&self) -> Result<PathBuf> {
         if let Some(db) = &self.db {
             return Ok(db.clone());
         }
@@ -200,7 +215,7 @@ impl Cli {
         Ok(PathBuf::from(home).join(".local/share/task-tool/tasks.db"))
     }
 
-    fn actor(&self) -> Result<String> {
+    fn actor(&self) -> Result<Actor> {
         let actor = self.actor.clone().unwrap_or_else(|| {
             if std::env::var("CLAUDECODE").as_deref() == Ok("1") {
                 "claude-code".into()
@@ -212,14 +227,14 @@ impl Cli {
         if actor.is_empty() {
             bail!("actor must not be empty; use --as NAME or TASK_TOOL_ACTOR");
         }
-        Ok(actor.to_owned())
+        Ok(Actor::from(actor))
     }
 
-    pub fn validate_output(&self) -> Result<()> {
+    pub(crate) fn validate_output(&self) -> Result<()> {
         output::validate(self.json.as_deref(), &self.command)
     }
 
-    pub fn print_guide(&self) -> Result<()> {
+    pub(crate) fn print_guide(&self) -> Result<()> {
         output::print(
             &json!({"instructions": INSTRUCTIONS}),
             self.json.as_deref(),
@@ -227,29 +242,17 @@ impl Cli {
         )
     }
 
-    pub fn execute(&self, store: &Store) -> Result<()> {
-        let actor = self.actor()?;
+    pub(crate) fn execute(&self, store: &Store) -> Result<()> {
+        let value = match self.read(store)? {
+            Some(value) => value,
+            None => self.write(store, self.actor()?)?,
+        };
+        output::print(&value, self.json.as_deref(), &self.command)
+    }
+
+    /// Runs a command that only reads; `None` for commands that change something.
+    fn read(&self, store: &Store) -> Result<Option<Value>> {
         let value = match &self.command {
-            Command::Create {
-                title,
-                body,
-                parent,
-                workdir,
-            } => {
-                let workdir = match (workdir, parent) {
-                    (Some(dir), _) => Some(std::path::absolute(dir)?),
-                    (None, None) => Some(std::env::current_dir()?),
-                    (None, Some(_)) => None,
-                };
-                serde_json::to_value(store.create(NewTask {
-                    title: title.clone(),
-                    description: text(body)?,
-                    parent_id: *parent,
-                    created_by: Some(actor),
-                    workdir: workdir.map(|p| p.display().to_string()),
-                    ..NewTask::default()
-                })?)?
-            }
             Command::List {
                 status,
                 assignee,
@@ -259,45 +262,51 @@ impl Cli {
                 all,
                 limit,
             } => {
-                if let Some(id) = parent {
-                    get(store, *id)?;
-                }
-                let tasks = store.list(Scope::All)?;
-                let by_id: HashMap<i64, &Task> = tasks.iter().map(|t| (t.id, t)).collect();
-                let search = search.as_ref().map(|s| s.to_lowercase());
-                let filtered: Vec<&Task> = tasks
-                    .iter()
-                    .filter(|t| {
-                        let scope_matches = match parent {
-                            Some(id) => t.parent_id == Some(*id),
-                            None => *all || t.parent_id.is_none(),
-                        };
-                        let mut root = *t;
-                        while let Some(parent) = root.parent_id.and_then(|id| by_id.get(&id)) {
-                            root = parent;
-                        }
-                        let repo = root.github.as_ref().map(|g| &g.repo);
-                        scope_matches
-                            && (status.is_empty() || status.contains(&t.status))
-                            && assignee
-                                .as_ref()
-                                .is_none_or(|a| t.assignee.as_ref() == Some(a))
-                            && (!local || repo.is_none())
-                            && self.repo.as_ref().is_none_or(|r| repo == Some(r))
-                            && search.as_ref().is_none_or(|s| {
-                                t.title.to_lowercase().contains(s)
-                                    || t.description.to_lowercase().contains(s)
-                            })
-                    })
-                    .take(*limit)
-                    .collect();
-                serde_json::to_value(filtered)?
+                let filter = ListFilter {
+                    status,
+                    assignee: assignee.as_deref(),
+                    local: *local,
+                    search: search.as_deref(),
+                    parent: *parent,
+                    all: *all,
+                    limit: *limit,
+                };
+                serde_json::to_value(self.list(store, &filter)?)?
             }
             Command::View { id, history } => json!({
                 "task": get(store, *id)?, "subtasks": store.list(Scope::ChildrenOf(*id))?,
                 "history": store.events_for(*id, *history)?,
                     "sessions": store.sessions(*id)?,
             }),
+            Command::Activity { limit, task } => serde_json::to_value(match task {
+                Some(id) => {
+                    get(store, *id)?;
+                    store.events_for(*id, *limit)?
+                }
+                None => store.activity(*limit, None)?,
+            })?,
+            Command::Stats => serde_json::to_value(store.stats()?)?,
+            _ => return Ok(None),
+        };
+        Ok(Some(value))
+    }
+
+    /// Runs a command that changes tasks, recorded as done by `actor`.
+    fn write(&self, store: &Store, actor: Actor) -> Result<Value> {
+        let value = match &self.command {
+            Command::Create {
+                title,
+                body,
+                parent,
+                workdir,
+            } => serde_json::to_value(create(
+                store,
+                actor,
+                title,
+                body,
+                *parent,
+                workdir.as_deref(),
+            )?)?,
             Command::Edit {
                 id,
                 title,
@@ -305,43 +314,44 @@ impl Cli {
                 status,
                 assignee,
             } => {
-                let task = store.update_as(
-                    *id,
-                    TaskUpdate {
-                        title: title.clone(),
-                        description: body.as_deref().map(text).transpose()?,
-                        status: *status,
-                        assignee: assignee.clone(),
-                    },
-                    &actor,
-                )?;
-                serde_json::to_value(task)?
+                let update = TaskUpdate {
+                    title: title.clone(),
+                    description: body.as_deref().map(text).transpose()?,
+                    status: *status,
+                    assignee: assignee.clone(),
+                };
+                serde_json::to_value(store.update_as(*id, &update, &actor)?)?
             }
-            Command::Start { id } => serde_json::to_value(store.start_task(*id, &actor)?)?,
-            Command::Done { id, summary, links } => serde_json::to_value(
-                store.complete_with_links(
+            Command::Start { id } => serde_json::to_value(store.start_task(
+                *id,
+                &actor,
+                std::env::var("T3CODE_THREAD_ID").ok().as_deref(),
+            )?)?,
+            Command::Done { id, summary, links } => {
+                let links: Vec<_> = links
+                    .iter()
+                    .map(|url| task_tool::work::WorkLink {
+                        url: url.clone(),
+                        label: None,
+                    })
+                    .collect();
+                serde_json::to_value(store.complete_with_links(
                     *id,
                     &actor,
                     &text(summary)?,
-                    links
-                        .iter()
-                        .map(|url| task_tool::work::WorkLink {
-                            url: url.clone(),
-                            label: None,
-                        })
-                        .collect(),
-                )?,
-            )?,
+                    &links,
+                )?)?
+            }
             Command::Approve { id, comment } => {
-                serde_json::to_value(store.review_task(*id, &actor, true, &text(comment)?)?)?
+                review(store, &actor, *id, ReviewDecision::Approve, comment)?
             }
             Command::Reject { id, reason } => {
-                serde_json::to_value(store.review_task(*id, &actor, false, &text(reason)?)?)?
+                review(store, &actor, *id, ReviewDecision::Reject, reason)?
             }
             Command::Link { id, url, label } => {
                 store.add_link(
                     *id,
-                    task_tool::work::WorkLink {
+                    &task_tool::work::WorkLink {
                         url: url.clone(),
                         label: label.clone(),
                     },
@@ -351,19 +361,16 @@ impl Cli {
             Command::Fail { id, reason } => {
                 serde_json::to_value(store.fail_task(*id, &actor, &text(reason)?)?)?
             }
-            Command::Split { id, titles } => serde_json::to_value(
-                store.create_subtasks(
-                    *id,
-                    titles
-                        .iter()
-                        .map(|t| NewSubtask {
-                            title: t.clone(),
-                            description: String::new(),
-                        })
-                        .collect(),
-                    &actor,
-                )?,
-            )?,
+            Command::Split { id, titles } => {
+                let subtasks: Vec<_> = titles
+                    .iter()
+                    .map(|t| NewSubtask {
+                        title: t.clone(),
+                        description: String::new(),
+                    })
+                    .collect();
+                serde_json::to_value(store.create_subtasks(*id, &subtasks, &actor)?)?
+            }
             Command::Note { id, message } => {
                 serde_json::to_value(store.add_note(*id, &actor, &text(message)?)?)?
             }
@@ -371,30 +378,134 @@ impl Cli {
                 if !yes {
                     bail!("deleting task {id} and its descendants requires --yes");
                 }
-                let task = get(store, *id)?;
-                store.delete(*id)?;
-                json!({"deleted": task})
+                delete(store, *id)?
             }
-            Command::Activity { limit, task } => serde_json::to_value(match task {
-                Some(id) => {
-                    get(store, *id)?;
-                    store.events_for(*id, *limit)?
-                }
-                None => store.activity(*limit, None)?,
-            })?,
-            Command::Stats => serde_json::to_value(store.stats()?)?,
             Command::Gh(GhCommand::Push { id, repository }) => {
-                let repo = repository.as_ref().or(self.repo.as_ref()).context(
-                    "no repository given; pass owner/name or set --repo / TASK_TOOL_REPO",
-                )?;
-                serde_json::to_value(github::push_task(store, &GhCli, *id, repo)?)?
+                serde_json::to_value(self.push(store, *id, repository.as_deref())?)?
             }
+            Command::List { .. }
+            | Command::View { .. }
+            | Command::Activity { .. }
+            | Command::Stats => bail!("{:?} only reads", self.command),
             Command::Guide | Command::Serve { .. } | Command::Mcp => {
-                unreachable!("handled by main")
+                bail!("guide, serve and mcp are run by main")
             }
         };
-        output::print(&value, self.json.as_deref(), &self.command)
+        Ok(value)
     }
+}
+
+/// The `list` filters; every one that is set must match.
+struct ListFilter<'a> {
+    status: &'a [Status],
+    assignee: Option<&'a str>,
+    /// Only tasks outside any GitHub repository.
+    local: bool,
+    search: Option<&'a str>,
+    parent: Option<i64>,
+    /// Subtasks too, not only top-level tasks.
+    all: bool,
+    limit: usize,
+}
+
+impl Cli {
+    fn list(&self, store: &Store, filter: &ListFilter<'_>) -> Result<Vec<Task>> {
+        if let Some(id) = filter.parent {
+            get(store, id)?;
+        }
+        let tasks = store.list(Scope::All)?;
+        let by_id: HashMap<i64, &Task> = tasks.iter().map(|t| (t.id, t)).collect();
+        // A subtask belongs to the repository of its top-level task.
+        let repo_of = |task: &Task| {
+            let mut root = task;
+            while let Some(parent) = root.parent_id.and_then(|id| by_id.get(&id)) {
+                root = parent;
+            }
+            root.github.as_ref().map(|g| g.repo.clone())
+        };
+        let search = filter.search.map(str::to_lowercase);
+        let matches = |t: &Task| {
+            let scope_matches = match filter.parent {
+                Some(id) => t.parent_id == Some(id),
+                None => filter.all || t.parent_id.is_none(),
+            };
+            let repo = repo_of(t);
+            scope_matches
+                && (filter.status.is_empty() || filter.status.contains(&t.status))
+                && filter
+                    .assignee
+                    .is_none_or(|a| t.assignee.as_deref() == Some(a))
+                && (!filter.local || repo.is_none())
+                && self.repo.as_ref().is_none_or(|r| repo.as_ref() == Some(r))
+                && search.as_ref().is_none_or(|s| {
+                    t.title.to_lowercase().contains(s) || t.description.to_lowercase().contains(s)
+                })
+        };
+        Ok(tasks
+            .iter()
+            .filter(|t| matches(t))
+            .take(filter.limit)
+            .cloned()
+            .collect())
+    }
+}
+
+impl Cli {
+    /// Publishes a local task as a GitHub issue in `repository` or the default repository.
+    fn push(&self, store: &Store, id: i64, repository: Option<&str>) -> Result<Task> {
+        let repo = repository
+            .or(self.repo.as_deref())
+            .context("no repository given; pass owner/name or set --repo / TASK_TOOL_REPO")?;
+        Ok(github::push_task(store, &GhCli, id, repo)?)
+    }
+}
+
+/// Approves or rejects work under review; `comment` may be `-` to read stdin.
+fn review(
+    store: &Store,
+    actor: &Actor,
+    id: i64,
+    decision: ReviewDecision,
+    comment: &str,
+) -> Result<Value> {
+    Ok(serde_json::to_value(store.review_task(
+        id,
+        actor,
+        decision,
+        &text(comment)?,
+    )?)?)
+}
+
+/// Deletes a task and its descendants, returning what was deleted.
+fn delete(store: &Store, id: i64) -> Result<Value> {
+    let task = get(store, id)?;
+    store.delete(id)?;
+    Ok(json!({"deleted": task}))
+}
+
+/// Creates a task. A top-level task is worked on in the current folder unless `workdir`
+/// says otherwise; a subtask inherits its parent's folder.
+fn create(
+    store: &Store,
+    actor: Actor,
+    title: &str,
+    body: &str,
+    parent: Option<i64>,
+    workdir: Option<&std::path::Path>,
+) -> Result<Task> {
+    let workdir = match (workdir, parent) {
+        (Some(dir), _) => Some(std::path::absolute(dir)?),
+        (None, None) => Some(std::env::current_dir()?),
+        (None, Some(_)) => None,
+    };
+    Ok(store.create(&NewTask {
+        title: title.to_owned(),
+        description: text(body)?,
+        parent_id: parent,
+        created_by: Some(actor),
+        workdir: workdir.map(|p| p.display().to_string()),
+        ..NewTask::default()
+    })?)
 }
 
 fn get(store: &Store, id: i64) -> Result<Task> {

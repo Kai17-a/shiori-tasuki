@@ -146,6 +146,40 @@ pub fn sync_assigned(
     store: &Store,
     gh: &(impl GhRunner + ?Sized),
 ) -> Result<ImportReport, GithubError> {
+    let issues = fetch_assigned(gh)?;
+    let mut report = ImportReport::default();
+    let mut outcomes = HashMap::new();
+    for issue in &issues {
+        let repo = issue.repository.name_with_owner.as_str();
+        validate_repo(repo)?;
+        let record = IssueRecord {
+            link: GithubLink {
+                repo: repo.to_owned(),
+                number: issue.number,
+                url: issue.url.clone(),
+            },
+            title: fit_title(&issue.title),
+            body: &issue.body,
+            closed: issue.is_closed(),
+            created_at: issue.created_at.as_deref(),
+            closed_at: issue.closed_at.as_deref(),
+        };
+        let outcome = store.upsert_github_issue(&record)?;
+        outcomes.insert((repo.to_owned(), issue.number), outcome);
+        match outcome {
+            Upsert::Created => report.created += 1,
+            Upsert::Updated => report.updated += 1,
+            Upsert::Unchanged => {}
+        }
+    }
+    let linked_updates = link_parents(store, &issues, &outcomes)?;
+    report.updated += linked_updates;
+    Ok(report)
+}
+
+/// Every issue assigned to the signed-in user, newest activity first, up to
+/// [`SEARCH_LIMIT`]; repositories are validated before anything is stored.
+fn fetch_assigned(gh: &(impl GhRunner + ?Sized)) -> Result<Vec<Issue>, GithubError> {
     let mut issues = Vec::new();
     let mut cursor = None;
     let mut seen_cursors = HashSet::new();
@@ -198,38 +232,23 @@ pub fn sync_assigned(
         cursor = Some(next);
     }
 
-    let mut report = ImportReport::default();
-    let mut outcomes = HashMap::new();
-    for issue in &issues {
-        let repo = issue.repository.name_with_owner.as_str();
-        validate_repo(repo)?;
-        let record = IssueRecord {
-            link: GithubLink {
-                repo: repo.to_owned(),
-                number: issue.number,
-                url: issue.url.clone(),
-            },
-            title: fit_title(&issue.title),
-            body: &issue.body,
-            closed: issue.is_closed(),
-            created_at: issue.created_at.as_deref(),
-            closed_at: issue.closed_at.as_deref(),
-        };
-        let outcome = store.upsert_github_issue(&record)?;
-        outcomes.insert((repo.to_owned(), issue.number), outcome);
-        match outcome {
-            Upsert::Created => report.created += 1,
-            Upsert::Updated => report.updated += 1,
-            Upsert::Unchanged => {}
-        }
-    }
+    Ok(issues)
+}
+
+/// Mirrors parent relations between imported issues and returns how many tasks whose
+/// issue was otherwise unchanged got a new parent.
+fn link_parents(
+    store: &Store,
+    issues: &[Issue],
+    outcomes: &HashMap<(String, u32), Upsert>,
+) -> Result<u32, GithubError> {
     let mut linked_updates = HashSet::new();
     // A former ancestor may move below its child. Retry deferred cycle checks after
     // other edges have moved, so stale relations cannot make the result order matter.
     // Bounded passes: a cycle the checks cannot settle must not loop forever.
     for _ in 0..=issues.len() {
         let mut changed = false;
-        for issue in &issues {
+        for issue in issues {
             let task = store
                 .find_by_github(&issue.repository.name_with_owner, issue.number)?
                 .ok_or_else(|| GithubError::Output("imported task disappeared".into()))?;
@@ -252,8 +271,9 @@ pub fn sync_assigned(
             break;
         }
     }
-    report.updated += linked_updates.len() as u32;
-    Ok(report)
+    // At most SEARCH_LIMIT issues, so the count always fits.
+    // At most SEARCH_LIMIT issues, so the count always fits.
+    Ok(u32::try_from(linked_updates.len()).unwrap_or(u32::MAX))
 }
 
 /// Creates a GitHub issue assigned to the signed-in user from a local task and links

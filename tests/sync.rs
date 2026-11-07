@@ -12,12 +12,12 @@ struct FakeGh {
 
 impl GhRunner for FakeGh {
     fn run(&self, _: &[String]) -> Result<String, GhError> {
-        self.replies.lock().unwrap().remove(0)
+        self.replies.lock().expect("fake gh lock").remove(0)
     }
 }
 
 fn syncer(replies: Vec<Result<String, GhError>>) -> (Syncer, Store) {
-    let store = Store::open_in_memory().unwrap();
+    let store = Store::open_in_memory().expect("in-memory store opens");
     let gh = Arc::new(FakeGh {
         replies: Mutex::new(replies),
     });

@@ -1,6 +1,7 @@
 //! JSON API and dashboard for organizing a personal task list.
 
 use axum::body::Bytes;
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{StatusCode, Uri, header};
 use axum::middleware::{self, Next};
@@ -11,7 +12,8 @@ use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::activity::Event;
+use crate::Actor;
+use crate::activity::{Event, ReviewDecision};
 use crate::settings::{
     BackgroundPosition, BackgroundSettings, BackgroundSize, ImageError, ImageInfo, MAX_IMAGE_BYTES,
 };
@@ -33,7 +35,7 @@ pub enum HostPolicy {
 }
 
 /// Shared state of the HTTP server.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AppState {
     pub store: Store,
     pub hosts: HostPolicy,
@@ -410,33 +412,6 @@ async fn static_file(uri: Uri) -> Response {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::is_loopback_host;
-
-    #[test]
-    fn recognises_loopback_hosts() {
-        for host in [
-            "localhost",
-            "localhost:1",
-            "127.0.0.1:80",
-            "[::1]:7878",
-            "[::1]",
-        ] {
-            assert!(is_loopback_host(host), "{host}");
-        }
-        for host in [
-            "",
-            "example.com",
-            "127.0.0.1.evil.com",
-            "[::2]:1",
-            "localhost.evil:1",
-        ] {
-            assert!(!is_loopback_host(host), "{host}");
-        }
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CreateTask {
@@ -449,11 +424,11 @@ struct CreateTask {
 
 async fn create_task(
     State(state): State<AppState>,
-    body: Result<Json<CreateTask>, axum::extract::rejection::JsonRejection>,
+    body: Result<Json<CreateTask>, JsonRejection>,
 ) -> ApiResult<(StatusCode, Json<Task>)> {
-    let Json(body) = body.map_err(bad_json)?;
+    let Json(body) = body.map_err(|e| bad_json(&e))?;
     let task = blocking(move || {
-        state.store.create(NewTask {
+        state.store.create(&NewTask {
             title: body.title,
             description: body.description,
             parent_id: body.parent_id,
@@ -465,7 +440,7 @@ async fn create_task(
     Ok((StatusCode::CREATED, Json(task)))
 }
 
-fn bad_json(error: axum::extract::rejection::JsonRejection) -> ApiError {
+fn bad_json(error: &JsonRejection) -> ApiError {
     ApiError(StatusCode::BAD_REQUEST, error.body_text())
 }
 
@@ -480,19 +455,19 @@ struct TaskPatch {
 async fn update_task(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    body: Result<Json<TaskPatch>, axum::extract::rejection::JsonRejection>,
+    body: Result<Json<TaskPatch>, JsonRejection>,
 ) -> ApiResult<Json<Task>> {
-    let Json(body) = body.map_err(bad_json)?;
+    let Json(body) = body.map_err(|e| bad_json(&e))?;
     blocking(move || {
         state.store.update_as(
             id,
-            TaskUpdate {
+            &TaskUpdate {
                 title: body.title,
                 description: body.description,
                 status: body.status,
                 ..TaskUpdate::default()
             },
-            "user",
+            &Actor::User,
         )
     })
     .await
@@ -520,17 +495,17 @@ struct SubtaskBody {
 async fn create_subtask(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    body: Result<Json<SubtaskBody>, axum::extract::rejection::JsonRejection>,
+    body: Result<Json<SubtaskBody>, JsonRejection>,
 ) -> ApiResult<(StatusCode, Json<Task>)> {
-    let Json(body) = body.map_err(bad_json)?;
+    let Json(body) = body.map_err(|e| bad_json(&e))?;
     let task = blocking(move || {
         let mut tasks = state.store.create_subtasks(
             id,
-            vec![NewSubtask {
+            &[NewSubtask {
                 title: body.title,
                 description: body.description,
             }],
-            "user",
+            &Actor::User,
         )?;
         Ok::<_, StoreError>(tasks.remove(0))
     })
@@ -547,11 +522,11 @@ struct NoteBody {
 async fn add_note(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    body: Result<Json<NoteBody>, axum::extract::rejection::JsonRejection>,
+    body: Result<Json<NoteBody>, JsonRejection>,
 ) -> ApiResult<Json<Task>> {
-    let Json(body) = body.map_err(bad_json)?;
+    let Json(body) = body.map_err(|e| bad_json(&e))?;
     blocking(move || {
-        state.store.add_note(id, "user", &body.message)?;
+        state.store.add_note(id, &Actor::User, &body.message)?;
         state.store.get(id)?.ok_or(StoreError::NotFound(id))
     })
     .await
@@ -561,32 +536,56 @@ async fn add_note(
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ReviewBody {
-    decision: String,
+    decision: ReviewDecision,
     #[serde(default)]
     comment: String,
 }
+
 async fn review_task(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Json(body): Json<ReviewBody>,
+    body: Result<Json<ReviewBody>, JsonRejection>,
 ) -> ApiResult<Json<Task>> {
-    let approve = match body.decision.as_str() {
-        "approve" => true,
-        "reject" => false,
-        _ => {
-            return Err(ApiError(
-                StatusCode::BAD_REQUEST,
-                "decision must be approve or reject".into(),
-            ));
-        }
-    };
-    blocking(move || state.store.review_task(id, "user", approve, &body.comment))
-        .await
-        .map(Json)
+    let Json(body) = body.map_err(|e| bad_json(&e))?;
+    blocking(move || {
+        state
+            .store
+            .review_task(id, &Actor::User, body.decision, &body.comment)
+    })
+    .await
+    .map(Json)
 }
+
 async fn timeline(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> ApiResult<Json<Vec<crate::work::TimelineItem>>> {
     blocking(move || state.store.timeline(id)).await.map(Json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_loopback_host;
+
+    #[test]
+    fn recognises_loopback_hosts() {
+        for host in [
+            "localhost",
+            "localhost:1",
+            "127.0.0.1:80",
+            "[::1]:7878",
+            "[::1]",
+        ] {
+            assert!(is_loopback_host(host), "{host}");
+        }
+        for host in [
+            "",
+            "example.com",
+            "127.0.0.1.evil.com",
+            "[::2]:1",
+            "localhost.evil:1",
+        ] {
+            assert!(!is_loopback_host(host), "{host}");
+        }
+    }
 }

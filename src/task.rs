@@ -108,8 +108,8 @@ pub struct NewTask {
     pub description: String,
     pub parent_id: Option<i64>,
     pub status: Option<Status>,
-    /// Defaults to `user` when absent.
-    pub created_by: Option<String>,
+    /// Defaults to the person when absent.
+    pub created_by: Option<crate::Actor>,
     /// Folder an agent should work in; subtasks inherit their parent's.
     pub workdir: Option<String>,
 }

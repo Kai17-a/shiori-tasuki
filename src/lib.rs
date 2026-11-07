@@ -1,6 +1,7 @@
 //! Task manager that works with AI agents, GitHub issues, and a browser admin page.
 
 pub mod activity;
+mod actor;
 pub mod git_evidence;
 pub mod github;
 pub mod mcp;
@@ -12,10 +13,13 @@ mod task;
 pub mod web;
 pub mod work;
 
+pub use activity::ReviewDecision;
+pub use actor::Actor;
 pub use store::{MAX_TITLE_CHARS, Scope, Store, StoreError};
 pub use task::{
     GithubLink, NewSubtask, NewTask, ParseStatusError, Status, SubtaskSummary, Task, TaskUpdate,
 };
+pub use work::SessionOutcome;
 
 /// Shared workflow for agents using MCP or the shell CLI.
 pub const INSTRUCTIONS: &str = "This is the user's personal task list. Work on a task only when \

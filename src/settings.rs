@@ -221,18 +221,25 @@ impl Store {
             return Err(ImageError::TooLarge(data.len()));
         }
         let content_type = sniff_image_type(data).ok_or(ImageError::Unsupported)?;
-        self.conn()
-            .execute(
+        // Read the stored time in the same statement: another process may replace or
+        // delete the image as soon as this one returns.
+        let updated_at: String = self
+            .conn()
+            .query_row(
                 "INSERT INTO images (name, content_type, data, updated_at)
                  VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
                  ON CONFLICT (name) DO UPDATE SET content_type = excluded.content_type,
-                    data = excluded.data, updated_at = excluded.updated_at",
+                    data = excluded.data, updated_at = excluded.updated_at
+                 RETURNING updated_at",
                 params![BACKGROUND_IMAGE, content_type, data],
+                |r| r.get(0),
             )
             .map_err(StoreError::from)?;
-        Ok(self
-            .background_image_info()?
-            .expect("the image was stored just above"))
+        Ok(ImageInfo {
+            content_type: content_type.to_owned(),
+            bytes: data.len(),
+            updated_at,
+        })
     }
 
     /// Removes the background image; returns whether there was one.
