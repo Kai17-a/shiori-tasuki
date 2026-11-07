@@ -1,5 +1,6 @@
 //! Keeps the user's GitHub issues mirrored in the background.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -32,6 +33,9 @@ pub struct Syncer {
     store: Store,
     gh: Arc<dyn GhRunner + Send + Sync>,
     status: Arc<Mutex<SyncStatus>>,
+    /// Set when a run is asked for while another is in progress, so that run repeats once
+    /// with the newest settings instead of the request being dropped.
+    rerun: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for Syncer {
@@ -54,6 +58,7 @@ impl Syncer {
                 interval_secs: SYNC_INTERVAL.as_secs(),
                 ..SyncStatus::default()
             })),
+            rerun: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -66,17 +71,52 @@ impl Syncer {
         self.lock().clone()
     }
 
-    /// Syncs once, blocking; skipped when another run is still in progress.
+    /// Syncs once, blocking. When another run is still in progress, that run repeats once
+    /// after it finishes instead, so a settings change made meanwhile is not missed.
     pub fn run_once(&self) {
-        {
-            let mut status = self.lock();
-            if status.running {
-                return;
-            }
-            status.running = true;
+        if self.begin() {
+            self.run_begun();
         }
+    }
+
+    /// Starts a run on a blocking thread of the current Tokio runtime without waiting for
+    /// it. The status reports `running` as soon as this returns.
+    pub fn run_soon(&self) {
+        if self.begin() {
+            let syncer = self.clone();
+            tokio::task::spawn_blocking(move || syncer.run_begun());
+        }
+    }
+
+    /// Marks a run as started, or asks the run in progress to repeat; true when the caller
+    /// must now run it.
+    fn begin(&self) -> bool {
+        let mut status = self.lock();
+        if status.running {
+            self.rerun.store(true, Ordering::SeqCst);
+            return false;
+        }
+        status.running = true;
+        true
+    }
+
+    /// Runs after [`Syncer::begin`] returned true, repeating while reruns were asked for.
+    fn run_begun(&self) {
         // Clears `running` even if the sync panics, so later runs are not skipped forever.
         let _running = RunningGuard(self);
+        loop {
+            self.sync_and_record();
+            // Requests set `rerun` under this lock, so checking it here and clearing `running`
+            // in the same critical section cannot lose one.
+            let mut status = self.lock();
+            if !self.rerun.swap(false, Ordering::SeqCst) {
+                status.running = false;
+                break;
+            }
+        }
+    }
+
+    fn sync_and_record(&self) {
         let result = github::sync_issues(&self.store, self.gh.as_ref());
         let now = unix_now();
         let mut status = self.lock();

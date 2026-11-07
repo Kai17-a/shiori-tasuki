@@ -638,14 +638,23 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
 .header-nav .nav-link:focus-visible,
 .ui-page-actions a:focus-visible { outline: 2px solid var(--bs-primary); outline-offset: 2px; }
 .header-sync { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--bs-secondary-color); }
+
 .header-sync.sync-failed { color: var(--bs-danger); }
 .ui-page-actions [aria-current="page"] { color: var(--bs-primary); background: var(--bs-primary-bg-subtle); }
+/* Sync progress: an indeterminate Kav-UI progress bar pinned to the very top of the window,
+   above the header. Remove once Kai17-a/Custom-UI#135 ships. */
+.sync-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 1080;
+  border-radius: 0;
+}
 @media (width < 768px) {
   .app-content .ui-page-header { gap: var(--space-3); }
   .app-content .ui-page-heading { flex-basis: 100%; }
   .ui-page-actions { width: 100%; }
   .ui-page-actions .btn { min-height: 44px; min-width: 44px; }
-  .header-sync { flex-basis: 100%; }
+  .header-sync { flex-basis: 100%; justify-content: flex-start; }
   .ui-page-actions .header-relax { display: none; }
 }
 

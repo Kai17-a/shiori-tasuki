@@ -11,6 +11,7 @@
   <script defer src="app.js"></script>
 </head>
 <body class="ui-app" data-ui-theme="glassmorphism" data-ui-theme-persist>
+  <progress class="ui-progress ui-progress-sm sync-progress" id="sync-progress" max="100" aria-label="GitHub と同期中" hidden>同期中</progress>
   <div class="app-shell" id="workspace">
     <main class="app-content">
       <div class="ui-stack">
@@ -25,7 +26,7 @@
           </div>
           <div class="ui-page-actions">
             <a href="#/overview" class="type-caption" id="activity-back" hidden>概要に戻る</a>
-            <span class="header-sync type-caption" id="header-sync" role="status" title="GitHub の同期状態"><span icon="mdi-refresh" aria-hidden="true"></span><span data-sync-summary>確認中…</span></span>
+            <button class="btn btn-ghost-secondary btn-sm header-sync" type="button" id="header-sync" data-action="sync-now" title="GitHub と今すぐ同期"><span icon="mdi-refresh" aria-hidden="true"></span><span data-sync-summary>確認中…</span></button>
             <a class="btn btn-ghost-secondary btn-icon-only header-relax" href="/relax.html" aria-label="背景を眺める" title="背景を眺める"><span icon="mdi-image" aria-hidden="true"></span></a>
             <a class="btn btn-ghost-secondary btn-icon-only" href="#/settings" data-nav="settings" aria-label="設定" title="設定"><span icon="mdi-cog" aria-hidden="true"></span></a>
             <button class="btn btn-ghost-secondary btn-icon-only" type="button" data-ui-toggle="theme" data-ui-theme-icon icon="mdi-weather-night" aria-label="ダークに切替" title="ダークに切替"></button>
@@ -210,9 +211,12 @@
 
         <section class="fx-grid fx-gap-4" data-view="settings" aria-label="設定" hidden>
           <section class="fx-col-12 ui-card" aria-labelledby="sync-title">
-            <div class="ui-card-header fx fx-justify-between fx-items-center sp-gap-3">
-              <h2 class="ui-card-title sp-m-0 fx-flex-1 fx-min-0 type-truncate" id="sync-title">GitHub との同期</h2>
-              <span class="badge badge-neutral fx-shrink-0" id="sync-badge">同期を確認中</span>
+            <div class="ui-card-header fx fx-wrap fx-justify-between fx-items-center fx-gap-2">
+              <div class="fx fx-items-center fx-gap-2 fx-min-0">
+                <h2 class="ui-card-title sp-m-0" id="sync-title">GitHub との同期</h2>
+                <span class="badge badge-neutral fx-shrink-0" id="sync-badge">同期を確認中</span>
+              </div>
+              <button class="btn btn-sm btn-outline-secondary fx-shrink-0" type="button" data-action="sync-now" icon="mdi-refresh">今すぐ同期</button>
             </div>
             <div class="ui-card-body ui-stack">
               <p class="type-caption type-color-muted sp-m-0">自分のリポジトリで自分が作ったIssueと、自分が担当のIssueを、5分ごとに自動で取り込みます。他の人が立てたIssueは、自分を担当者にすると取り込まれます。</p>
@@ -220,7 +224,7 @@
               <div class="alert alert-warning" id="sync-error" hidden><p class="sp-m-0">GitHubと同期できませんでした。gh コマンドのログイン状態を確認してください。<span class="type-caption" data-sync-error></span></p></div>
               <section class="ui-stack ignored-repos" aria-labelledby="ignored-repos-title">
                 <h3 class="ignored-repos-title" id="ignored-repos-title">取り込まないリポジトリ</h3>
-                <p class="type-caption type-color-muted sp-m-0">ここにあるリポジトリの Issue は取り込みません。追加すると、そのリポジトリから取り込み済みのタスク（子タスクを含む）を削除します。外すと、次の同期で取り込み直します。</p>
+                <p class="type-caption type-color-muted sp-m-0">ここにあるリポジトリの Issue は取り込みません。追加すると、そのリポジトリから取り込み済みのタスク（子タスクを含む）を削除します。外すと、すぐに同期して取り込み直します。</p>
                 <ul class="ignored-repo-list" id="ignored-repos" role="list"></ul>
                 <form class="ignore-repo-form" id="ignore-repo-form" novalidate>
                   <div class="field">

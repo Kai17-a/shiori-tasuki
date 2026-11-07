@@ -60,7 +60,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/tasks/{id}/timeline", get(timeline))
         .route("/api/activity", get(activity))
         .route("/api/activity/latest", get(latest_activity))
-        .route("/api/sync", get(sync_status))
+        .route("/api/sync", get(sync_status).post(start_sync))
         .route("/api/stats", get(stats))
         .route("/api/settings", get(settings))
         .route("/api/settings/background", patch(update_background))
@@ -284,6 +284,12 @@ async fn sync_status(State(state): State<AppState>) -> Json<SyncStatus> {
     Json(state.sync.status())
 }
 
+/// Starts a sync now without waiting for it; the status reports when it has finished.
+async fn start_sync(State(state): State<AppState>) -> Json<SyncStatus> {
+    state.sync.run_soon();
+    Json(state.sync.status())
+}
+
 async fn stats(State(state): State<AppState>) -> ApiResult<Json<Stats>> {
     blocking(move || state.store.stats()).await.map(Json)
 }
@@ -479,18 +485,21 @@ async fn ignore_repo(
     Ok(Json(json!({ "deleted": deleted, "settings": view })))
 }
 
-/// Imports a repository again from the next sync.
+/// Imports a repository again: starts a sync right away rather than waiting for the next
+/// scheduled one, because the repository's tasks were deleted when it was ignored.
 async fn unignore_repo(
     State(state): State<AppState>,
     body: Result<Json<RepoBody>, JsonRejection>,
 ) -> ApiResult<Json<SettingsView>> {
     let Json(body) = body.map_err(|e| bad_json(&e))?;
-    blocking(move || {
-        state.store.unignore_repo(&body.repo)?;
-        settings_view(&state.store)
+    let store = state.store.clone();
+    let view = blocking(move || {
+        store.unignore_repo(&body.repo)?;
+        settings_view(&store)
     })
-    .await
-    .map(Json)
+    .await?;
+    state.sync.run_soon();
+    Ok(Json(view))
 }
 
 #[derive(Debug, Deserialize)]

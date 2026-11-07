@@ -790,8 +790,9 @@
     const indicator = $('#header-sync');
     indicator.classList.toggle('sync-failed', Boolean(status.last_error));
     indicator.title = status.last_error
-      ? `GitHub の最終同期に失敗: ${status.last_error}`
-      : `GitHub と${minutes}分ごとに自動で同期します`;
+      ? `GitHub の最終同期に失敗: ${status.last_error}。押すと今すぐ同期します`
+      : `押すと GitHub と今すぐ同期します（${minutes}分ごとにも自動で同期します）`;
+    showSyncRunning(status.running);
     setText('[data-sync-summary]', status.running ? '同期中…'
       : status.last_error ? '同期エラー'
       : finished ? `同期: ${finished}` : '同期待ち');
@@ -806,11 +807,54 @@
         await refresh();
       }
       lastSyncFinishedAt = status.last_finished_at;
+      return status;
     } catch {
       setText('[data-sync-summary]', '同期: 不明');
       $('#header-sync').title = '同期の状態を取得できません';
+      return null;
     }
   }
+
+  /** Shows the progress bar at the top of the screen and locks the sync buttons while a run lasts. */
+  function showSyncRunning(running) {
+    $('#sync-progress').hidden = !running;
+    for (const button of document.querySelectorAll('[data-action="sync-now"]')) {
+      button.disabled = running;
+      button.setAttribute('aria-busy', String(running));
+    }
+    if (running) followSync();
+  }
+
+  let following = false;
+  /** Checks the sync every few seconds until the current run has finished. */
+  async function followSync() {
+    if (following) return;
+    following = true;
+    const FOLLOW_MS = 2000;
+    try {
+      for (let i = 0; i < 90; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, FOLLOW_MS));
+        const status = await loadSync();
+        if (status && !status.running) return;
+      }
+    } finally {
+      following = false;
+    }
+  }
+
+  document.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-action="sync-now"]');
+    if (!button || button.disabled) return;
+    showSyncRunning(true);
+    setText('[data-sync-summary]', '同期中…');
+    try {
+      renderSync(await api('POST', '/api/sync'));
+      showSyncRunning(true);
+    } catch (err) {
+      showSyncRunning(false);
+      notifyError('同期を始められませんでした', err);
+    }
+  });
 
   // ---- Background image settings -------------------------------------------
 
@@ -954,7 +998,8 @@
     try {
       const view = await api('DELETE', '/api/settings/github/ignored', { repo: button.dataset.unignore });
       renderIgnoredRepos(view.github.ignored_repos);
-      notifySuccess('取り込みを再開します', '次の同期で取り込みます。');
+      notifySuccess('取り込みを再開します', 'いまから同期して取り込み直します。');
+      followSync();
     } catch (err) {
       notifyError('取り込みを再開できませんでした', err);
       if (button.isConnected) button.disabled = false;

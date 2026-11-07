@@ -761,6 +761,67 @@ async fn settings_ignore_and_restore_a_repository() {
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(restored["github"]["ignored_repos"], json!([]));
+
+    // The repository's tasks were deleted when it was ignored, so restoring it syncs at once
+    // instead of leaving it missing until the next scheduled run.
+    for _ in 0..200 {
+        if app.sync.status().last_finished_at.is_some() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert!(
+        app.sync.status().last_finished_at.is_some(),
+        "restoring a repository starts a sync"
+    );
+}
+
+/// Answers the login lookup only after the test lets it, so a run can be held in progress.
+struct GatedGh {
+    logins: Mutex<u32>,
+    gate: Mutex<std::sync::mpsc::Receiver<()>>,
+}
+
+impl GhRunner for GatedGh {
+    fn run(&self, args: &[String]) -> Result<String, GhError> {
+        if args == ["api", "user", "--jq", ".login"] {
+            let first = {
+                let mut logins = self.logins.lock().expect("gated gh lock");
+                *logins += 1;
+                *logins == 1
+            };
+            if first {
+                self.gate
+                    .lock()
+                    .expect("gated gh lock")
+                    .recv()
+                    .expect("test opens the gate");
+            }
+        }
+        Err(GhError::Failed("offline".into()))
+    }
+}
+
+#[test]
+fn a_sync_asked_for_during_a_run_runs_again_after_it() {
+    let (open, gate) = std::sync::mpsc::channel();
+    let gh = Arc::new(GatedGh {
+        logins: Mutex::new(0),
+        gate: Mutex::new(gate),
+    });
+    let sync = Syncer::new(Store::open_in_memory().unwrap(), Arc::<GatedGh>::clone(&gh));
+    let first = {
+        let sync = sync.clone();
+        std::thread::spawn(move || sync.run_once())
+    };
+    while !sync.status().running {
+        std::thread::yield_now();
+    }
+    sync.run_once(); // returns at once while the first run is in progress
+    open.send(()).unwrap();
+    first.join().unwrap();
+    assert_eq!(*gh.logins.lock().unwrap(), 2, "the run repeats once");
+    assert!(!sync.status().running);
 }
 
 #[tokio::test]
@@ -786,4 +847,21 @@ async fn every_response_forbids_framing_by_other_sites() {
             "{uri}"
         );
     }
+}
+
+#[tokio::test]
+async fn post_sync_starts_a_run_and_reports_it_running() {
+    let app = app();
+    let (status, body) = app.send("POST", "/api/sync", None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["running"], true, "{body}");
+    for _ in 0..200 {
+        if !app.sync.status().running {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    let after = app.sync.status();
+    assert!(!after.running);
+    assert!(after.last_finished_at.is_some());
 }
