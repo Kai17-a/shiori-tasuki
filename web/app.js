@@ -1409,12 +1409,16 @@
     familyOpener = null;
     if (location.hash.startsWith('#task-')) history.replaceState(null, '', `#/${currentView}`);
   });
+  /** Gap kept above a card scrolled to the top of its list. */
+  const REVEAL_TOP_GAP = 8;
+
   /**
-   * Centres a card in its column's own scrolling list. scrollIntoView would also scroll the
-   * column, which clips its overflow, whenever the list cannot scroll far enough by itself,
-   * pushing the column heading out of sight.
+   * Scrolls a card into view within its column's own scrolling list: to the top when
+   * `atTop` (so the subtasks below it show too), otherwise to the centre. scrollIntoView
+   * would also scroll the column, which clips its overflow, whenever the list cannot scroll
+   * far enough by itself, pushing the column heading out of sight.
    */
-  function revealCard(card) {
+  function revealCard(card, { atTop = false } = {}) {
     const list = card.closest('[data-ui-cards]');
     if (!list || getComputedStyle(list).overflowY === 'visible') {
       // Phones: columns do not scroll on their own, so let the page and board scroll.
@@ -1423,7 +1427,8 @@
     }
     const listRect = list.getBoundingClientRect();
     const cardRect = card.getBoundingClientRect();
-    list.scrollTop += cardRect.top - listRect.top - (listRect.height - cardRect.height) / 2;
+    list.scrollTop += cardRect.top - listRect.top
+      - (atTop ? REVEAL_TOP_GAP : (listRect.height - cardRect.height) / 2);
     card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     // The column clips rather than scrolls, so undo any scroll the browser gave it.
     const column = card.closest('[data-ui-column]');
@@ -1439,9 +1444,16 @@
     searchInput.value = '';
     setSelectValue(sourceSelect, 'all');
     showSubtasksInput.checked = true;
+    // Stacked subtasks are hidden inside their deck, so open this family's stacks in every
+    // column; otherwise there is nothing to connect.
+    if (subtaskLayout.value === 'stack') {
+      const root = taskTree().info.get(Number(target.dataset.id))?.root.id;
+      if (root !== undefined) for (const status of Object.keys(STATUS_LABELS)) expandedStacks.add(`${root}-${status}`);
+    }
     renderBoard();
     const card = board.querySelector(`[data-ui-card="${target.dataset.id}"]`);
-    if (card) revealCard(card);
+    // A parent goes to the top so its subtasks below it are in view to be connected.
+    if (card) revealCard(card, { atTop: card.dataset.root === card.dataset.uiCard });
     if (card) setTimeout(() => traceFamily(card), MAX_ENTRANCE_DELAY_MS + ENTRANCE_SETTLE_MS);
   });
   document.addEventListener('click', (event) => {
