@@ -1144,7 +1144,7 @@
     const descendants = family.members.length - 1;
     const place = parent
       ? `<a href="#task-${parent.id}">#${parent.id} ${escapeHtml(parent.title)}</a> の子タスク`
-      : descendants > 0 ? `子孫タスク ${descendants} 件` : '';
+      : descendants > 0 ? `子タスク ${descendants} 件` : '';
     const github = task.github && /^https:\/\//.test(task.github.url)
       ? `<a href="${escapeHtml(task.github.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(task.github.repo)}#${escapeHtml(task.github.number)}</a>` : '';
     const hidden = isShown(task) ? '' : '<span class="family-lead-status"><span icon="mdi-eye-off" aria-hidden="true"></span>非表示</span>';
@@ -1170,7 +1170,7 @@
       </div>` : '';
     return `<section class="family-section family-${family.family ?? 0}" aria-labelledby="family-tree-title">
       <div class="family-section-head">
-        <h3 id="family-tree-title">${total > 0 ? '子孫タスク' : 'タスクのつながり'}</h3>
+        <h3 id="family-tree-title">${total > 0 ? '子タスク' : 'タスクのつながり'}</h3>
         ${total > 0 ? `<span class="family-section-meta">完了 ${counts.done}/${total}</span>` : ''}
       </div>
       ${progress}

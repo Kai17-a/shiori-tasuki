@@ -181,7 +181,7 @@ task-tool edit 1 --title '認証を実装' --body '完了条件' --assignee ''
 task-tool fail 2 --reason '依存する API が未完成'  # todo に戻し担当を解除
 task-tool activity --task 1 --limit 30 --json
 task-tool stats --json
-task-tool hide 1     # 子孫も非表示。削除はしない（unhide で戻す、list --hidden で一覧）
+task-tool hide 1     # 子タスクごと非表示。削除はしない（unhide で戻す、list --hidden で一覧）
 task-tool gh push 1 owner/name --json
 ```
 
