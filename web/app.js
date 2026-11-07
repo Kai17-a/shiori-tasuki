@@ -1409,6 +1409,27 @@
     familyOpener = null;
     if (location.hash.startsWith('#task-')) history.replaceState(null, '', `#/${currentView}`);
   });
+  /**
+   * Centres a card in its column's own scrolling list. scrollIntoView would also scroll the
+   * column, which clips its overflow, whenever the list cannot scroll far enough by itself,
+   * pushing the column heading out of sight.
+   */
+  function revealCard(card) {
+    const list = card.closest('[data-ui-cards]');
+    if (!list || getComputedStyle(list).overflowY === 'visible') {
+      // Phones: columns do not scroll on their own, so let the page and board scroll.
+      card.scrollIntoView({ block: 'center' });
+      return;
+    }
+    const listRect = list.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    list.scrollTop += cardRect.top - listRect.top - (listRect.height - cardRect.height) / 2;
+    card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // The column clips rather than scrolls, so undo any scroll the browser gave it.
+    const column = card.closest('[data-ui-column]');
+    if (column) column.scrollTop = 0;
+  }
+
   familyDialog.addEventListener('click', (event) => {
     const target = event.target.closest('[data-action="trace-on-board"]');
     if (!target) return;
@@ -1420,7 +1441,7 @@
     showSubtasksInput.checked = true;
     renderBoard();
     const card = board.querySelector(`[data-ui-card="${target.dataset.id}"]`);
-    card?.scrollIntoView({ block: 'center' });
+    if (card) revealCard(card);
     if (card) setTimeout(() => traceFamily(card), MAX_ENTRANCE_DELAY_MS + ENTRANCE_SETTLE_MS);
   });
   document.addEventListener('click', (event) => {
