@@ -26,7 +26,7 @@ const TASK_HISTORY_LIMIT: u32 = 20;
 /// Builds the instructions an agent follows to split `task` into subtasks.
 pub fn decompose_prompt(task: &Task, subtasks: &[Task]) -> String {
     let mut text = format!(
-        "task-tool のタスク #{} 「{}」を、実行できる粒度の子タスクに分解してください。\n",
+        "shiori-tasuki のタスク #{} 「{}」を、実行できる粒度の子タスクに分解してください。\n",
         task.id, task.title
     );
     if !task.description.is_empty() {
@@ -41,7 +41,7 @@ pub fn decompose_prompt(task: &Task, subtasks: &[Task]) -> String {
     let _ = write!(
         text,
         "\n手順:\n\
-         1. task-tool の MCP ツール get_task（id: {id}）で内容と既存の子タスクを確認する。\n\
+         1. shiori-tasuki の MCP ツール get_task（id: {id}）で内容と既存の子タスクを確認する。\n\
          2. 必要ならリポジトリやコードを調べ、足りない作業を洗い出す。\n\
          3. 登録済みと重複しない子タスクだけを create_subtasks（parent_id: {id}）で一度に登録する。\n\
          各子タスクは1つの成果物か確認できる作業にし、短いタイトルと、完了条件を含む説明を付けてください。\n",
@@ -196,7 +196,7 @@ impl McpServer {
         json!({
             "protocolVersion": version,
             "capabilities": { "tools": {}, "prompts": {} },
-            "serverInfo": { "name": "task-tool", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": "shiori-tasuki", "version": env!("CARGO_PKG_VERSION") },
             "instructions": INSTRUCTIONS,
         })
     }

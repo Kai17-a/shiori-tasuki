@@ -5,10 +5,10 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use task_tool::github::{GhError, GhRunner};
-use task_tool::sync::Syncer;
-use task_tool::web::{self, AppState, HostPolicy};
-use task_tool::{Actor, NewSubtask, NewTask, Store};
+use shiori_tasuki::github::{GhError, GhRunner};
+use shiori_tasuki::sync::Syncer;
+use shiori_tasuki::web::{self, AppState, HostPolicy};
+use shiori_tasuki::{Actor, NewSubtask, NewTask, Store};
 use tower::ServiceExt;
 
 #[derive(Default)]
@@ -68,7 +68,7 @@ fn app() -> App {
     }
 }
 
-fn add(store: &Store, title: &str) -> task_tool::Task {
+fn add(store: &Store, title: &str) -> shiori_tasuki::Task {
     store
         .create(&NewTask {
             title: title.into(),
@@ -281,7 +281,7 @@ async fn rejects_non_images_and_oversized_uploads() {
     assert_eq!(res.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
 
     let mut huge = PNG.to_vec();
-    huge.resize(task_tool::settings::MAX_IMAGE_BYTES + 1, 0);
+    huge.resize(shiori_tasuki::settings::MAX_IMAGE_BYTES + 1, 0);
     let res = app
         .send_bytes("PUT", "/api/settings/background/image", huge)
         .await;
@@ -466,7 +466,7 @@ async fn validates_writes_and_missing_tasks() {
     let app = app();
     for body in [
         json!({"title":" "}),
-        json!({"title":"x".repeat(task_tool::MAX_TITLE_CHARS + 1)}),
+        json!({"title":"x".repeat(shiori_tasuki::MAX_TITLE_CHARS + 1)}),
     ] {
         assert_eq!(
             app.send("POST", "/api/tasks", Some(body)).await.0,
@@ -629,7 +629,7 @@ async fn review_api_returns_sessions_timeline_and_records_decisions() {
     assert_eq!(approved["status"], "done");
     assert_eq!(
         app.store.get(root.id).unwrap().unwrap().status,
-        task_tool::Status::Done
+        shiori_tasuki::Status::Done
     );
     let (status, timeline) = app
         .send("GET", &format!("/api/tasks/{}/timeline", child.id), None)
@@ -651,7 +651,7 @@ async fn external_content_patch_conflicts_but_status_and_unchanged_content_work(
     app.store
         .link_github(
             task.id,
-            &task_tool::GithubLink {
+            &shiori_tasuki::GithubLink {
                 repo: "o/r".into(),
                 number: 1,
                 url: "https://github.com/o/r/issues/1".into(),

@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
-use task_tool::github::{self, GhError, GhRunner, GithubError};
-use task_tool::{Actor, NewSubtask, NewTask, Status, Store, TaskUpdate};
+use shiori_tasuki::github::{self, GhError, GhRunner, GithubError};
+use shiori_tasuki::{Actor, NewSubtask, NewTask, Status, Store, TaskUpdate};
 
 /// Plays `gh` signed in as `me`.
 ///
@@ -339,8 +339,8 @@ fn sync_changes_are_recorded_in_the_task_history_as_github() {
     assert_eq!(
         kinds,
         vec![
-            (task_tool::activity::EventKind::Status, "github"),
-            (task_tool::activity::EventKind::Created, "github"),
+            (shiori_tasuki::activity::EventKind::Status, "github"),
+            (shiori_tasuki::activity::EventKind::Created, "github"),
         ],
         "an unchanged issue adds nothing"
     );
@@ -470,7 +470,7 @@ fn local_hierarchy_is_preserved_and_linking_does_not_complete_parent() {
     store
         .link_github(
             protected.id,
-            &task_tool::GithubLink {
+            &shiori_tasuki::GithubLink {
                 repo: "o/r".into(),
                 number: 3,
                 url: "https://github.com/o/r/issues/3".into(),

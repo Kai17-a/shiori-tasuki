@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>背景を眺める · task-tool</title>
+  <title>背景を眺める · shiori-tasuki</title>
   <script src="vendor/kav-ui/js/theme-init.js"></script>
   <link rel="stylesheet" href="vendor/kav-ui/css/ui.css">
   <style>
@@ -138,7 +138,7 @@
       'use strict';
       /** How long the mouse rests before the controls and the cursor fade away. */
       const IDLE_MS = 2500;
-      const FIT_KEY = 'task-tool-relax-fill';
+      const FIT_KEY = 'shiori-tasuki-relax-fill';
       /** One click of − or + changes the size by this factor. */
       const ZOOM_STEP = 1.25;
       /** The picture can grow to this many times the size that shows all of it. */
@@ -448,7 +448,7 @@
         })
         .catch(() => {
           const empty = document.querySelector('.relax-empty');
-          empty.querySelector('p').textContent = '背景画像を読み込めませんでした。task-tool serve が動いているか確かめてください。';
+          empty.querySelector('p').textContent = '背景画像を読み込めませんでした。stk serve が動いているか確かめてください。';
           empty.hidden = false;
         });
     })();
