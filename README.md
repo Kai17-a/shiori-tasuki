@@ -11,6 +11,14 @@
 
 ## インストール
 
+[mise](https://mise.jdx.dev/) で、リリースのビルド済みのバイナリを入れる。
+
+```sh
+mise use -g github:Kai17-a/shiori-tasuki
+```
+
+ソースからビルドするときは次のとおり。
+
 ```sh
 cargo install --path .
 ```
@@ -88,3 +96,5 @@ stk approve 12
 ```sh
 cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
 ```
+
+リリースするときは、`Cargo.toml` の `version` を上げてから、同じ版のタグ（例: `v0.1.0`）を push する。GitHub Actions が Linux・macOS・Windows 向けにビルドし、GitHub Release に載せる。
