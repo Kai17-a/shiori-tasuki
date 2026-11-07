@@ -313,11 +313,12 @@
   </div>
 
   <dialog class="ui-dialog family-dialog" data-ui-dialog id="family-dialog" aria-labelledby="family-title">
-    <div class="fx fx-justify-between fx-items-center sp-gap-3">
+    <div class="family-head">
       <h2 class="sp-m-0 fx-flex-1 fx-min-0" id="family-title">タスクのつながり</h2>
-      <button type="button" class="btn btn-outline-secondary btn-icon-only fx-shrink-0" data-ui-dismiss="dialog" aria-label="閉じる"><span icon="mdi-close" aria-hidden="true"></span></button>
+      <button type="button" class="btn btn-sm btn-ghost-secondary fx-shrink-0" id="family-trace" data-action="trace-on-board" icon="mdi-view-grid">ボードで表示</button>
+      <button type="button" class="btn btn-ghost-secondary btn-icon-only fx-shrink-0" data-ui-dismiss="dialog" aria-label="閉じる" autofocus><span icon="mdi-close" aria-hidden="true"></span></button>
     </div>
-    <div class="ui-stack sp-mt-4" id="family-body"></div>
+    <div class="family-body" id="family-body"></div>
   </dialog>
 
   <dialog class="ui-dialog" data-ui-dialog id="new-task-dialog" aria-labelledby="new-task-title">

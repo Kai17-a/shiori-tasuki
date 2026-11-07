@@ -987,32 +987,41 @@
     </li>`;
   }
 
+  /** Short subtitle under the modal title: the task's status and where it sits in its family. */
+  function renderFamilyLead(family, task) {
+    const parent = task.parent_id != null ? tasks.find((t) => t.id === task.parent_id) : null;
+    const descendants = family.members.length - 1;
+    const place = parent
+      ? `<a href="#task-${parent.id}">#${parent.id} ${escapeHtml(parent.title)}</a> の子タスク`
+      : descendants > 0 ? `子孫タスク ${descendants} 件` : '';
+    const github = task.github && /^https:\/\//.test(task.github.url)
+      ? `<a href="${escapeHtml(task.github.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(task.github.repo)}#${escapeHtml(task.github.number)}</a>` : '';
+    const parts = [`<span class="family-lead-status"><span class="dot dot-${task.status}" aria-hidden="true"></span>${STATUS_LABELS[task.status]}</span>`, place, github].filter(Boolean);
+    return `<p class="family-lead">${parts.join('<span aria-hidden="true">·</span>')}</p>`;
+  }
+
   function renderFamily(family, currentId) {
     const descendants = family.members.filter((t) => t.id !== family.root.id);
     const counts = Object.fromEntries(Object.keys(STATUS_LABELS).map((k) => [k, 0]));
     for (const t of descendants) counts[t.status] += 1;
     const total = descendants.length;
-    const rate = total ? Math.round((counts.done / total) * 100) : 0;
     const summary = Object.entries(counts).map(([k, n]) => `${STATUS_LABELS[k]} ${n}件`).join('、');
     const segments = Object.entries(counts)
       .filter(([, n]) => n > 0)
       .map(([k, n]) => `<span class="family-meter-${k}" style="flex-grow:${n}"></span>`)
       .join('');
-    const current = tasks.find((t) => t.id === currentId);
-    return `<div class="ui-stack family-${family.family ?? 0}">
-      <p class="type-body sp-m-0">${total === 0 ? 'このタスクに親子関係はありません。' : `「${escapeHtml(family.root.title)}」の下に ${total} 件のタスクがつながっています。${current && current.id !== family.root.id ? `選んだタスク（#${current.id}）を枠で示しています。` : ''}`}</p>
-      ${total > 0 ? `<section class="ui-card" aria-labelledby="family-summary-title">
-        <div class="ui-card-body ui-stack">
-          <div class="fx fx-justify-between fx-items-center sp-gap-3">
-            <h3 class="type-heading sp-m-0" id="family-summary-title">子孫タスクの状況</h3>
-            <span class="type-caption fx-shrink-0">完了 ${counts.done}/${total}（${rate}%）</span>
-          </div>
-          <div class="family-meter" role="img" aria-label="${summary}">${segments}</div>
-          <div class="ui-cluster">
-            ${Object.entries(counts).map(([k, n]) => `<span class="${STATUS_BADGES[k]}">${STATUS_LABELS[k]} ${n}</span>`).join('')}
-          </div>
-        </div>
-      </section>` : ''}
+    const progress = total > 0 ? `<div class="family-progress">
+        <div class="family-meter" role="img" aria-label="${summary}">${segments}</div>
+        <ul class="family-legend" role="list">
+          ${Object.entries(counts).map(([k, n]) => `<li><span class="dot dot-${k}" aria-hidden="true"></span>${STATUS_LABELS[k]}<span class="family-legend-count">${n}</span></li>`).join('')}
+        </ul>
+      </div>` : '';
+    return `<section class="family-section family-${family.family ?? 0}" aria-labelledby="family-tree-title">
+      <div class="family-section-head">
+        <h3 id="family-tree-title">${total > 0 ? '子孫タスク' : 'タスクのつながり'}</h3>
+        ${total > 0 ? `<span class="family-section-meta">完了 ${counts.done}/${total}</span>` : ''}
+      </div>
+      ${progress}
       ${family.members.some(isAgentWorking)
         ? `<div class="ui-agent-workflow ui-agent-flowing" data-ui-agent-flow>
         <label class="ui-agent-motion"><input type="checkbox" checked>接続線を動かす</label>`
@@ -1021,19 +1030,17 @@
           <ul class="ui-agent-tree">${renderFamilyNode(family.root, family, currentId)}</ul>
         </div>
       </div>
-      <div class="ui-cluster">
-        <button type="button" class="btn btn-outline-secondary" data-action="trace-on-board" data-id="${currentId}" icon="mdi-view-grid">ボードで表示</button>
-        <button type="button" class="btn btn-primary" data-ui-dismiss="dialog">閉じる</button>
-      </div>
-    </div>`;
+    </section>`;
   }
 
   function statusOptions(status) {
     return Object.entries(STATUS_LABELS).map(([value, label]) => `<option value="${value}"${status === value ? ' selected' : ''}>${label}</option>`).join('');
   }
 
-  /** Local date and time for an RFC 3339 timestamp, e.g. "2026/11/6 9:10:23". */
-  const localTime = (iso) => new Date(iso).toLocaleString('ja-JP');
+  /** Local date and time for an RFC 3339 timestamp, e.g. "2026/11/6 9:10". */
+  const localTime = (iso) => new Date(iso).toLocaleString('ja-JP', { dateStyle: 'short', timeStyle: 'short' });
+  /** A commit id short enough to read, as git shows it. */
+  const shortHash = (hash) => (hash ? hash.slice(0, 7) : '');
 
   /** One `git --numstat` line ("added<TAB>removed<TAB>path") as "+1 −0 path"; binary files show "-". */
   function numstatLine(line) {
@@ -1050,27 +1057,82 @@
     const rest = values.length > 3
       ? `<details><summary>残り${values.length - 3}件を表示</summary><ul>${values.slice(3).map(item).join('')}</ul></details>`
       : '';
-    return `<div><p>${title}（${values.length}件）</p><ul>${values.slice(0, 3).map(item).join('')}</ul>${rest}</div>`;
+    return `<div class="evidence-group"><p>${title}（${values.length}件）</p><ul>${values.slice(0, 3).map(item).join('')}</ul>${rest}</div>`;
   }
-  function renderSessions(sessions = []) {
-    const outcomes = { running: '作業中', reported: '報告済み', failed: '中止', abandoned: '再着手で終了' };
-    // Newest first: the latest report is what the user reviews.
-    return `<section class="ui-stack work-record"><h3>AI の作業記録</h3>${sessions.length ? [...sessions].reverse().map((r) => {
-      const g = r.end_git || r.start_git;
-      const totals = (g?.files || []).reduce((sum, line) => { const [added, removed] = line.split('\t'); sum[0] += Number(added) || 0; sum[1] += Number(removed) || 0; return sum; }, [0, 0]);
-      return `<article class="ui-card"><div class="ui-card-body ui-stack">
-        <div class="ui-cluster">${actorBadge(r.agent)}<span class="badge badge-neutral">${outcomes[r.outcome] || escapeHtml(r.outcome)}</span></div>
-        <p><time datetime="${escapeHtml(r.started_at)}">${escapeHtml(localTime(r.started_at))}</time> → ${r.ended_at ? `<time datetime="${escapeHtml(r.ended_at)}">${escapeHtml(localTime(r.ended_at))}</time>` : '作業中'}</p>
-        ${r.thread_id ? `<label>T3 スレッド ID<input class="form-control" readonly value="${escapeHtml(r.thread_id)}" aria-label="T3 スレッド ID（コピー用）"></label>` : ''}
-        <p>作業フォルダ: ${escapeHtml(r.workdir || '未設定')}</p>
-        ${g ? `<p>ブランチ: ${escapeHtml(g.branch || '未確定')}<br><code>${escapeHtml(r.start_git?.head || 'コミットなし')} → ${escapeHtml(r.end_git?.head || '未報告')}</code></p>
-          <p>変更: ${g.files.length} ファイル · +${totals[0]} / −${totals[1]}</p>${evidenceList('コミット', g.commits)}${evidenceList('変更したファイル', g.files, numstatLine)}${evidenceList('コミットしていない変更', g.uncommitted, numstatLine)}${evidenceList('git に未登録のファイル', g.untracked)}
-          ${g.truncated ? '<p>記録は100件まで表示しています。</p>' : ''}${g.errors?.length ? `<p>${escapeHtml(g.errors.join('\n'))}</p>` : ''}` : '<p>Git の記録なし</p>'}
-        <ul>${r.links.map((l) => `<li><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label || l.url)}</a></li>`).join('')}</ul>
-        <p class="event-message">${escapeHtml(r.summary)}</p>
-      </div></article>`;
-    }).join('') : '<p>まだ着手の記録がありません。</p>'}</section>`;
+
+  const SESSION_OUTCOMES = { running: '作業中', reported: '報告済み', failed: '中止', abandoned: '再着手で終了' };
+
+  /**
+   * One AI work session: what it says it did first, then a one-line record of when and where,
+   * then the git evidence folded away for when the user wants to check it.
+   */
+  function renderSession(r, key) {
+    const g = r.end_git || r.start_git;
+    const totals = (g?.files || []).reduce((sum, line) => { const [added, removed] = line.split('\t'); sum[0] += Number(added) || 0; sum[1] += Number(removed) || 0; return sum; }, [0, 0]);
+    const time = `<time datetime="${escapeHtml(r.started_at)}">${escapeHtml(localTime(r.started_at))}</time> → ${r.ended_at ? `<time datetime="${escapeHtml(r.ended_at)}">${escapeHtml(localTime(r.ended_at))}</time>` : '作業中'}`;
+    const start = shortHash(r.start_git?.head);
+    const end = shortHash(r.end_git?.head);
+    const heads = start && end && start !== end ? `${start} → ${end}` : end || start;
+    const where = [
+      g?.branch ? `ブランチ ${escapeHtml(g.branch)}` : '',
+      heads ? `<code>${escapeHtml(heads)}</code>` : '',
+      g ? `変更 ${g.files.length} ファイル +${totals[0]} −${totals[1]}` : 'Git の記録なし',
+      r.workdir ? escapeHtml(r.workdir) : '',
+    ].filter(Boolean);
+    const evidence = g ? `${evidenceList('コミット', g.commits)}${evidenceList('変更したファイル', g.files, numstatLine)}${evidenceList('コミットしていない変更', g.uncommitted, numstatLine)}${evidenceList('git に未登録のファイル', g.untracked)}${g.truncated ? '<p>記録は100件まで表示しています。</p>' : ''}${g.errors?.length ? `<p>${escapeHtml(g.errors.join('\n'))}</p>` : ''}` : '';
+    const hasEvidence = /<li>/.test(evidence) || r.thread_id;
+    return `<article class="work-session">
+      <p class="work-session-head">${actorBadge(r.agent)}<span>${SESSION_OUTCOMES[r.outcome] || escapeHtml(r.outcome)}</span><span>${time}</span></p>
+      ${r.summary ? `<p class="work-session-summary">${escapeHtml(r.summary)}</p>` : ''}
+      ${r.links.length ? `<ul class="work-session-links" role="list">${r.links.map((l) => `<li><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer"><span icon="mdi-open-in-new" aria-hidden="true"></span>${escapeHtml(l.label || l.url)}</a></li>`).join('')}</ul>` : ''}
+      <p class="work-session-meta">${where.join('<span aria-hidden="true">·</span>')}</p>
+      ${hasEvidence ? `<details class="work-session-evidence" data-details-key="evidence-${key}"><summary>変更の記録</summary>
+        <div class="work-session-evidence-body">
+          ${r.thread_id ? `<div class="evidence-group"><p>T3 スレッド ID</p><p class="work-session-thread"><code>${escapeHtml(r.thread_id)}</code><button type="button" class="btn btn-sm btn-ghost-secondary btn-icon-only" data-ui-copy="${escapeHtml(r.thread_id)}" aria-label="T3 スレッド ID をコピー"></button></p></div>` : ''}
+          ${evidence}
+        </div>
+      </details>` : ''}
+    </article>`;
   }
+
+  /** Earlier sessions, newest first; the one under review is shown in the review panel instead. */
+  function renderSessions(sessions, skipLatest) {
+    const list = [...sessions].reverse().slice(skipLatest ? 1 : 0);
+    if (skipLatest && !list.length) return '';
+    return `<section class="family-section work-record" aria-labelledby="work-record-title">
+      <h3 id="work-record-title">${skipLatest ? 'これまでの AI の作業' : 'AI の作業記録'}</h3>
+      ${list.length ? list.map((r, i) => renderSession(r, `${r.started_at}-${i}`)).join('') : '<p class="family-empty">まだ着手の記録がありません</p>'}
+    </section>`;
+  }
+
+  /**
+   * The review moment: what the AI reports it did, its evidence, and the user's two decisions
+   * side by side. A task can also be put up for review by hand, without a report.
+   */
+  function renderReview(sessions) {
+    const latest = sessions.at(-1);
+    const report = latest && latest.outcome === 'reported' ? latest : null;
+    return `<section class="review-panel" aria-labelledby="review-title">
+      <div class="family-section-head">
+        <h3 id="review-title"><span class="dot dot-review" aria-hidden="true"></span>確認待ち</h3>
+        <span class="family-section-meta">${report ? `${escapeHtml(actorLabel(report.agent))}の報告` : '報告なし'}</span>
+      </div>
+      ${report ? renderSession(report, 'review') : '<p class="family-empty">AI の報告はありません。内容を確かめて、承認か差し戻しを選びます。</p>'}
+      <div class="review-decisions">
+        <form class="review-decision" data-task-form="approve">
+          <label for="approve-comment">承認のコメント（任意）</label>
+          <textarea class="form-control" id="approve-comment" name="comment" rows="2"></textarea>
+          <div><button class="btn btn-primary" type="submit" icon="mdi-check">承認</button></div>
+        </form>
+        <form class="review-decision" data-task-form="reject">
+          <label for="reject-reason">差し戻しの理由（必須）</label>
+          <textarea class="form-control" id="reject-reason" name="comment" rows="2" required maxlength="4000"></textarea>
+          <div><button class="btn btn-outline-danger" type="submit" icon="mdi-undo">差し戻し</button></div>
+        </form>
+      </div>
+    </section>`;
+  }
+
   /** Events that say what happened; status and assignee changes they cause are folded into them. */
   const STEP_KINDS = new Set(['started', 'reported', 'approved', 'rejected', 'failed']);
   /** How close a status change must be to a step of the same task and actor to count as part of it. */
@@ -1096,43 +1158,55 @@
 
   function renderTimeline(items = []) {
     const steps = timelineSteps(items);
-    return `<section><h3>作業の経過</h3>${steps.length
-      ? `<ol class="ui-timeline" role="list">${steps.map((event) => renderEvent(event, { withTask: true })).join('')}</ol>`
-      : '<p>まだ記録がありません。</p>'}</section>`;
+    return `<section class="family-section" aria-labelledby="timeline-title"><h3 id="timeline-title">作業の経過</h3>${steps.length
+      ? `<ol class="ui-timeline ui-timeline-compact family-events" role="list">${steps.map((event) => renderEvent(event, { withTask: true })).join('')}</ol>`
+      : '<p class="family-empty">まだ記録がありません</p>'}</section>`;
   }
 
+  function renderHistory(task, history, folded) {
+    const list = `<ol class="ui-timeline ui-timeline-compact family-events" role="list">${history.map((e) => renderEvent(e)).join('')}</ol>`;
+    return folded
+      ? `<section class="family-section"><details data-details-key="history-${task.id}"><summary>このタスクの履歴（${history.length}件）</summary>${list}</details></section>`
+      : `<section class="family-section" aria-labelledby="history-title"><h3 id="history-title">タスクの履歴</h3>${list}</section>`;
+  }
 
   function renderTaskDetails(data) {
     const task = data.task;
     const github = task.github && /^https:\/\//.test(task.github.url)
       ? `<a href="${escapeHtml(task.github.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(task.github.repo)}#${escapeHtml(task.github.number)}</a>` : '';
-    return `<section class="ui-stack task-details" aria-label="タスクの詳細">
-      ${task.status === 'review' ? `<section class="ui-card"><div class="ui-card-body ui-stack"><h3>ユーザーの確認待ち</h3><form class="ui-stack" data-task-form="approve"><label for="approve-comment">承認コメント（任意）</label><textarea class="form-control" id="approve-comment" name="comment"></textarea><button class="btn btn-primary" type="submit">承認</button></form><form class="ui-stack" data-task-form="reject"><label for="reject-reason">差し戻しの理由（必須）</label><textarea class="form-control" id="reject-reason" name="comment" required maxlength="4000"></textarea><button class="btn btn-outline-danger" type="submit">差し戻し</button></form></div></section>` : ''}
-      ${renderSessions(data.sessions)}
+    const reviewing = task.status === 'review';
+    return `<div class="task-details">
+      ${renderSessions(data.sessions, reviewing && data.sessions.at(-1)?.outcome === 'reported')}
       ${hasFamily(task) ? renderTimeline(data.timeline) : ''}
-      <h3>タスクの編集</h3>
-      ${task.github ? `<p>GitHub で管理されているため、題名と説明は GitHub で編集します ${github}</p>` : ''}
-      <form class="ui-stack" data-task-form="edit" data-ui-validate novalidate>
-        <div class="field" data-ui-field><label for="edit-title">題名</label><input class="form-control" id="edit-title" name="title" required maxlength="200" pattern=".*\\S.*" value="${escapeHtml(task.title)}"${task.github ? ' readonly' : ''}><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
-        <div class="field"><label for="edit-description">説明</label><textarea class="form-control" id="edit-description" name="description" rows="4"${task.github ? ' readonly' : ''}>${escapeHtml(task.description)}</textarea></div>
-        <div class="field"><label for="edit-status">状態</label><select class="form-select" id="edit-status" name="status">${statusOptions(task.status)}</select></div>
-        <div class="ui-cluster"><button class="btn btn-primary" type="submit">変更を保存</button>${task.assignee ? actorBadge(task.assignee) : '担当なし'}</div>
-      </form>
-      <p class="sp-m-0">作業フォルダ: ${escapeHtml(task.workdir || '未設定')}</p>
-      <details data-details-key="subtask-${task.id}"><summary>子タスクを追加</summary>
-        <form class="ui-stack sp-mt-3" data-task-form="subtask" data-ui-validate novalidate>
-          <div class="field" data-ui-field><label for="subtask-title">題名（必須）</label><input class="form-control" id="subtask-title" name="title" required maxlength="200" pattern=".*\\S.*"><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
-          <div class="field"><label for="subtask-description">説明</label><textarea class="form-control" id="subtask-description" name="description" rows="2"></textarea></div>
-          <button class="btn btn-outline-primary" type="submit">子タスクを追加</button>
+      <section class="family-section" aria-labelledby="edit-title-heading">
+        <h3 id="edit-title-heading">編集</h3>
+        <form class="task-edit" data-task-form="edit" data-ui-validate novalidate>
+          <div class="field" data-ui-field><label for="edit-title">題名</label><input class="form-control" id="edit-title" name="title" required maxlength="200" pattern=".*\\S.*" value="${escapeHtml(task.title)}"${task.github ? ' readonly' : ''}><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
+          <div class="field"><label for="edit-description">説明</label><textarea class="form-control" id="edit-description" name="description" rows="4"${task.github ? ' readonly' : ''}>${escapeHtml(task.description)}</textarea>${task.github ? `<small>題名と説明は GitHub で編集します（${github}）</small>` : ''}</div>
+          <div class="task-edit-row">
+            <div class="field"><label for="edit-status">状態</label><select class="form-select" id="edit-status" name="status">${statusOptions(task.status)}</select></div>
+            <dl class="task-edit-facts">
+              <div><dt>担当</dt><dd>${task.assignee ? actorBadge(task.assignee) : 'なし'}</dd></div>
+              <div><dt>作業フォルダ</dt><dd>${task.workdir ? `<code>${escapeHtml(task.workdir)}</code>` : '未設定'}</dd></div>
+            </dl>
+          </div>
+          <div><button class="btn btn-primary" type="submit">変更を保存</button></div>
         </form>
-      </details>
-      <form class="ui-stack" data-task-form="note" data-ui-validate novalidate>
-        <div class="field" data-ui-field><label for="task-note">メモ</label><textarea class="form-control" id="task-note" name="message" required maxlength="4000" rows="3"></textarea><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
-        <div><button class="btn btn-outline-primary" type="submit">メモを追加</button></div>
-      </form>
-      <details data-details-key="delete-${task.id}"><summary>タスクを削除</summary><p>このタスクとすべての子タスクを削除します。元に戻せません。</p><button class="btn btn-outline-danger" type="button" data-action="delete-task">削除を確定</button></details>
-      <h3>タスクの履歴</h3><ol class="ui-timeline" role="list">${data.history.map((e) => renderEvent(e)).join('')}</ol>
-    </section>`;
+        <form class="task-edit" data-task-form="note" data-ui-validate novalidate>
+          <div class="field" data-ui-field><label for="task-note">メモ</label><textarea class="form-control" id="task-note" name="message" required maxlength="4000" rows="2"></textarea><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
+          <div><button class="btn btn-outline-secondary" type="submit">メモを追加</button></div>
+        </form>
+        <details data-details-key="subtask-${task.id}"><summary>子タスクを追加</summary>
+          <form class="task-edit" data-task-form="subtask" data-ui-validate novalidate>
+            <div class="field" data-ui-field><label for="subtask-title">題名（必須）</label><input class="form-control" id="subtask-title" name="title" required maxlength="200" pattern=".*\\S.*"><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
+            <div class="field"><label for="subtask-description">説明</label><textarea class="form-control" id="subtask-description" name="description" rows="2"></textarea></div>
+            <div><button class="btn btn-outline-secondary" type="submit">子タスクを追加</button></div>
+          </form>
+        </details>
+        <details data-details-key="delete-${task.id}"><summary>タスクを削除</summary><div class="task-edit"><p>このタスクとすべての子タスクを削除します。元に戻せません。</p><div><button class="btn btn-outline-danger" type="button" data-action="delete-task">削除を確定</button></div></div></details>
+      </section>
+      ${renderHistory(task, data.history, hasFamily(task))}
+    </div>`;
   }
 
   /** Opens the modal that shows how `taskId` is connected and how far its family has got. */
@@ -1159,8 +1233,11 @@
       if (request !== familyRequest || openTaskId !== taskId || !familyDialog.open) return;
       const task = data.task;
       setText('#family-title', `#${task.id} ${task.title}`);
+      $('#family-trace').dataset.id = String(taskId);
       const scrollTop = familyDialog.scrollTop;
-      replaceRegion(familyBody, renderFamily(family, taskId) + renderTaskDetails(data));
+      replaceRegion(familyBody, renderFamilyLead(family, task)
+        + (task.status === 'review' ? renderReview(data.sessions) : '')
+        + renderFamily(family, taskId) + renderTaskDetails(data));
       familyDialog.scrollTop = scrollTop;
     } catch (err) { notifyError('タスクを読み込めませんでした', err); }
   }
@@ -1176,7 +1253,7 @@
     familyOpener = null;
     if (location.hash.startsWith('#task-')) history.replaceState(null, '', `#/${currentView}`);
   });
-  familyBody.addEventListener('click', (event) => {
+  familyDialog.addEventListener('click', (event) => {
     const target = event.target.closest('[data-action="trace-on-board"]');
     if (!target) return;
     KavUI.hide('#family-dialog');

@@ -290,15 +290,154 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
   }
 }
 
-/* Family relationship modal. */
+/* Task modal. One quiet column of sections split by hairlines; the review panel is the one
+   raised surface, because deciding on the AI's report is what the modal is for. */
 .ui-dialog.family-dialog {
   width: min(64em, 92vw);
+}
+.family-head { display: flex; align-items: center; gap: var(--space-2); }
+.family-dialog h2 { font-size: var(--text-xl); font-weight: 600; line-height: var(--leading-tight); }
+.family-body,
+.task-details { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.family-body { margin-block-start: var(--space-2); }
+.family-lead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--bs-secondary-color);
+  font-size: var(--text-sm);
+}
+.family-lead-status { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--bs-body-color); }
+.family-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding-block-start: var(--space-6);
+  border-block-start: 1px solid var(--bs-border-color);
+}
+.family-body > .family-lead + .family-section { padding-block-start: 0; border-block-start: 0; }
+.family-dialog h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+.family-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.family-section-meta,
+.family-legend-count { font-variant-numeric: tabular-nums; }
+.family-section-meta { color: var(--bs-secondary-color); font-size: var(--text-sm); }
+.family-empty { margin: 0; color: var(--bs-secondary-color); }
+.family-section details > summary { width: fit-content; color: var(--bs-secondary-color); cursor: pointer; }
+.family-section details > summary:hover { color: var(--bs-body-color); }
+.family-dialog code {
+  color: var(--bs-body-color);
+  background: var(--bs-tertiary-bg);
+  border-radius: var(--bs-border-radius-sm);
+  padding-inline: 0.25em;
+  overflow-wrap: anywhere;
+}
+
+.family-progress { display: flex; flex-direction: column; gap: var(--space-2); }
+.family-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--bs-secondary-color);
+  font-size: var(--text-sm);
+}
+.family-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
+.family-legend .dot { font-size: var(--text-sm); }
+.family-legend-count { color: var(--bs-body-color); font-weight: 500; }
+
+.review-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-6);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius-lg);
+  background: color-mix(in srgb, var(--bs-body-bg) 72%, transparent);
+}
+.review-decisions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--bs-border-color);
+}
+.family-dialog form.review-decision { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; margin: 0; }
+
+.work-session { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.work-record .work-session + .work-session { padding-block-start: var(--space-4); border-block-start: 1px solid var(--bs-border-color); }
+.work-session-head,
+.work-session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--bs-secondary-color);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.work-session-head { gap: var(--space-2) var(--space-3); }
+.work-session-summary { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.work-session-links { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; list-style: none; }
+.work-session-links a { display: inline-flex; align-items: center; gap: var(--space-1); }
+.work-session-evidence summary { font-size: var(--text-sm); }
+.work-session-evidence-body { display: flex; flex-direction: column; gap: var(--space-3); padding-block-start: var(--space-3); }
+.evidence-group > p { margin: 0 0 var(--space-1); color: var(--bs-secondary-color); font-size: var(--text-sm); }
+.evidence-group ul { margin: 0; padding-inline-start: 1.25rem; font-size: var(--text-sm); }
+.work-session-thread { display: flex; align-items: center; gap: var(--space-2); }
+
+/* History in the modal: what happened and when on one line, the task and message below. */
+.family-events .ui-timeline-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
+  align-items: baseline;
+}
+.family-events .ui-timeline-title { display: block; grid-column: 1; grid-row: 1; margin: 0; font-size: var(--text-sm); font-weight: 500; }
+.family-events .ui-timeline-date { grid-column: 2; grid-row: 1; margin: 0; font-variant-numeric: tabular-nums; }
+.family-events .ui-timeline-content > :not(time, h3) { grid-column: 1 / -1; }
+.family-events .event-message { margin: 0; color: var(--bs-secondary-color); font-size: var(--text-sm); }
+.family-section details > .family-events { margin-block-start: var(--space-3); }
+
+/* Kav-UI lays dialog forms out as label/field columns; these forms stack like the rest of the app. */
+.family-dialog :is(form, div).task-edit { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; margin: 0; }
+.family-dialog .family-body p { margin: 0; }
+/* Fields use the modal's width instead of Kav-UI's 420px form column. */
+.family-dialog .task-edit .field { width: 100%; max-width: none; }
+.family-section details > .task-edit { padding-block-start: var(--space-3); }
+.task-edit-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+.task-edit-facts { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); margin: 0; min-width: 0; }
+.task-edit-facts > div { min-width: 0; }
+.task-edit-facts dt { margin-block-end: var(--space-1); color: var(--bs-secondary-color); font-size: var(--text-sm); font-weight: 400; }
+.task-edit-facts dd { margin: 0; min-height: 2.375rem; display: flex; align-items: center; }
+.task-edit p { margin: 0; }
+@media (width < 768px) {
+  .task-edit-row { grid-template-columns: minmax(0, 1fr); }
+  .review-panel { padding: var(--space-4); }
 }
 
 .family-meter {
   display: flex;
   gap: 2px;
-  height: 0.75rem;
+  height: 0.5rem;
   overflow: hidden;
   border-radius: 999px;
   background: var(--bs-secondary-bg);
@@ -309,10 +448,13 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
   transition: flex-grow var(--motion-duration-base) var(--motion-ease-out);
 }
 
+/* The same marks as the board's column dots: grey to-do, blue in progress, solid green waiting
+   for review, and done as the lighter green of an empty ring. Kav-UI colors review differently
+   in the agent tree: Kai17-a/Custom-UI#129. */
 .family-meter-todo { background: var(--bs-secondary-color); }
 .family-meter-in_progress { background: var(--bs-primary); }
-.family-meter-review { background: var(--bs-warning); }
-.family-meter-done { background: var(--bs-success); }
+.family-meter-review { background: var(--bs-success); }
+.family-meter-done { background: color-mix(in srgb, var(--bs-success) 45%, transparent); }
 
 .ui-agent-node.is-current {
   box-shadow: 0 0 0 3px var(--family-color, var(--bs-primary));
@@ -409,18 +551,7 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
   background: var(--bs-tertiary-bg);
 }
 
-.work-record { min-width: 0; }
-.work-record code, .work-record p, #review-list { overflow-wrap: anywhere; }
-/* Commit ids and file names stay readable in every theme. */
-.work-record code {
-  color: var(--bs-body-color);
-  background: var(--bs-tertiary-bg);
-  border-radius: var(--bs-border-radius-sm);
-  padding-inline: 0.25em;
-}
-.work-record ul { padding-inline-start: 1.25rem; }
-.work-record input { width: 100%; min-width: 0; }
-.work-record details { min-width: 0; }
+#review-list { overflow-wrap: anywhere; }
 
 /* Overview lists: rows span the card (no second box inside it), titles stop at two lines, and
    long lists end with a link instead of growing the page. */
