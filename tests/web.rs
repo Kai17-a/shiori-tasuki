@@ -742,3 +742,28 @@ async fn settings_ignore_and_restore_a_repository() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(restored["github"]["ignored_repos"], json!([]));
 }
+
+#[tokio::test]
+async fn every_response_forbids_framing_by_other_sites() {
+    let app = app();
+    for uri in ["/", "/api/tasks", "/missing"] {
+        let res = app
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(uri)
+                    .header(header::HOST, "127.0.0.1:7878")
+                    .body(Body::empty())
+                    .expect("request builds"),
+            )
+            .await
+            .expect("router answers");
+        assert_eq!(res.headers()[header::X_FRAME_OPTIONS], "DENY", "{uri}");
+        assert_eq!(
+            res.headers()[header::CONTENT_SECURITY_POLICY],
+            "frame-ancestors 'none'",
+            "{uri}"
+        );
+    }
+}

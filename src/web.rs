@@ -83,7 +83,25 @@ pub fn router(state: AppState) -> Router {
         .layer(middleware::from_fn(move |req: Request, next: Next| {
             check_host(hosts, req, next)
         }))
+        // Outermost, so refusals from check_host carry the headers too.
+        .layer(middleware::from_fn(deny_framing))
         .with_state(state)
+}
+
+/// Forbids other sites from framing the page, so they cannot trick the user into
+/// clicking approve or delete through an invisible frame (clickjacking).
+async fn deny_framing(req: Request, next: Next) -> Response {
+    let mut res = next.run(req).await;
+    let headers = res.headers_mut();
+    headers.insert(
+        header::X_FRAME_OPTIONS,
+        header::HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        header::HeaderValue::from_static("frame-ancestors 'none'"),
+    );
+    res
 }
 
 async fn check_host(policy: HostPolicy, req: Request, next: Next) -> Response {
