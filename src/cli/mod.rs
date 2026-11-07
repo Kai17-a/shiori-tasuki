@@ -24,7 +24,7 @@ use task_manager::{
     reason = "clap prints these doc comments as --help text, where backticks would show"
 )]
 pub(crate) struct Cli {
-    /// Database: --db > TASK_MANAGER_DB > $XDG_DATA_HOME/task-manager/tasks.db > $HOME/.local/share/task-manager/tasks.db. A database left under the old task-tool folder is used until the new one exists. Parent folders are created.
+    /// Database: --db > TASK_MANAGER_DB > $XDG_DATA_HOME/task-manager/tasks.db > $HOME/.local/share/task-manager/tasks.db. Parent folders are created.
     #[arg(long, global = true, env = "TASK_MANAGER_DB")]
     db: Option<PathBuf>,
     /// Actor recorded in history; defaults to claude-code for CLAUDECODE=1, otherwise user. Codex: --as codex.
@@ -58,7 +58,7 @@ pub(crate) enum Command {
     #[command(visible_alias = "add")]
     Create {
         title: String,
-        /// Description; - reads stdin. --description and -d are compatibility aliases.
+        /// Description; - reads stdin.
         #[arg(
             short = 'b',
             long,
