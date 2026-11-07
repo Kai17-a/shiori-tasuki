@@ -142,7 +142,7 @@ async fn there_is_no_manual_import_endpoint() {
         .send("POST", "/api/github/import", Some(json!({})))
         .await;
     assert!(status.is_client_error(), "got {status}");
-    assert!(app.gh.calls.lock().unwrap().is_empty());
+    assert_eq!(*app.gh.calls.lock().unwrap(), Vec::<Vec<String>>::new());
 }
 
 #[tokio::test]

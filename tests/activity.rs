@@ -278,7 +278,7 @@ fn summarises_agents_and_stalled_work() {
 
     let busy_task = store.get(busy.id).unwrap().unwrap();
     assert_eq!(busy_task.assignee.as_deref(), Some("claude-code"));
-    assert!(!busy_task.last_activity_at.is_empty());
+    assert_ne!(busy_task.last_activity_at, "");
 }
 
 #[test]

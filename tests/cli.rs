@@ -181,9 +181,9 @@ fn filters_json_tsv_and_errors() {
     ] {
         let o = c.run(args);
         assert_eq!(o.status.code(), Some(1));
-        assert!(o.stdout.is_empty());
+        assert_eq!(o.stdout, b"");
         let error = String::from_utf8_lossy(&o.stderr);
-        assert!(!error.is_empty());
+        assert_ne!(error, "");
         if args[0] == "view" {
             assert!(error.contains("999"));
         }
@@ -430,7 +430,7 @@ fn github_family_filters_and_edit_restriction() {
     assert!(String::from_utf8_lossy(&o.stderr).contains("GitHub"));
     let o = c.run(&["edit", "1", "--status", "review", "--json"]);
     assert!(o.status.success());
-    assert!(o.stderr.is_empty());
+    assert_eq!(o.stderr, b"");
 }
 
 #[test]

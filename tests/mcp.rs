@@ -179,7 +179,7 @@ fn creates_and_updates_tasks() {
     ));
     assert_eq!(listed.as_array().unwrap().len(), 1);
     let listed = payload(&call(&mut server, "list_tasks", json!({"status": "todo"})));
-    assert!(listed.as_array().unwrap().is_empty());
+    assert_eq!(listed, json!([]));
     assert_eq!(store.list(Scope::All).unwrap().len(), 1);
 }
 

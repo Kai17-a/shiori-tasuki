@@ -104,7 +104,7 @@ fn subtask_batch_with_an_invalid_item_creates_nothing() {
         .unwrap_err();
 
     assert!(matches!(err, StoreError::Invalid(_)), "got {err:?}");
-    assert!(store.list(Scope::ChildrenOf(parent.id)).unwrap().is_empty());
+    assert_eq!(store.list(Scope::ChildrenOf(parent.id)).unwrap(), []);
 }
 
 #[test]

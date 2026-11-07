@@ -236,7 +236,11 @@ fn rejects_repo_names_that_could_be_read_as_flags() {
         let err = github::push_task(&store, &gh, task.id, repo).unwrap_err();
         assert!(matches!(err, GithubError::Invalid(_)), "{repo:?}: {err:?}");
     }
-    assert!(gh.calls.borrow().is_empty(), "gh is never called");
+    assert_eq!(
+        *gh.calls.borrow(),
+        Vec::<Vec<String>>::new(),
+        "gh is never called"
+    );
 }
 
 #[test]
@@ -308,7 +312,7 @@ fn refuses_to_push_a_task_that_is_already_linked() {
     let err = github::push_task(&store, &gh, bug.id, "o/r").unwrap_err();
 
     assert!(matches!(err, GithubError::Invalid(_)), "got {err:?}");
-    assert!(gh.calls.borrow().is_empty());
+    assert_eq!(*gh.calls.borrow(), Vec::<Vec<String>>::new());
 }
 
 #[test]
