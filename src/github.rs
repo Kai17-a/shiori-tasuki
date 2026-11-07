@@ -137,10 +137,13 @@ impl Issue {
 /// between imported issues. Pull requests are not included.
 ///
 /// Two searches decide what is the user's:
-/// - every issue in repositories the account owns, except archived ones, since personal
-///   repositories are the user's own work whether or not anyone is assigned;
-/// - issues assigned to the user everywhere else (organizations), where only the user's
-///   share of the team's work is a task.
+/// - issues the user wrote in repositories the account owns, except archived ones, since
+///   personal repositories are the user's own work whether or not anyone is assigned;
+/// - issues assigned to the user anywhere, including issues other people opened that the
+///   user took on by assigning themselves.
+///
+/// Issues other people opened and nobody assigned to the user are left out: anyone can
+/// open an issue in a public repository, and imported text reaches AI agents as a task.
 ///
 /// Repositories the user chose to ignore ([`Store::ignore_repo`]) are skipped. Each
 /// search returns its newest activity first, up to the 1000 results GitHub search
@@ -157,16 +160,13 @@ pub fn sync_issues(
     let login = signed_in_login(gh)?;
     let mut issues = fetch_issues(
         gh,
-        &format!("user:{login} is:issue archived:false sort:updated-desc"),
+        &format!("user:{login} author:{login} is:issue archived:false sort:updated-desc"),
     )?;
     let mut seen: HashSet<(String, u32)> = issues
         .iter()
         .map(|i| (i.repository.name_with_owner.clone(), i.number))
         .collect();
-    for issue in fetch_issues(
-        gh,
-        &format!("assignee:@me is:issue -user:{login} sort:updated-desc"),
-    )? {
+    for issue in fetch_issues(gh, "assignee:@me is:issue sort:updated-desc")? {
         if seen.insert((issue.repository.name_with_owner.clone(), issue.number)) {
             issues.push(issue);
         }

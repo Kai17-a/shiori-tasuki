@@ -569,16 +569,18 @@ fn reversing_existing_hierarchy_is_independent_of_result_order() {
 }
 
 #[test]
-fn imports_every_issue_of_my_own_repositories_and_only_my_share_elsewhere() {
+fn imports_issues_i_wrote_in_my_repositories_and_issues_assigned_to_me() {
     let store = Store::open_in_memory().unwrap();
+    // The fake answers the GitHub searches; GitHub applies their author and assignee
+    // filters, so issues strangers opened in my repositories never reach these results.
     let gh = FakeGh::replying([results(&[
         issue("org/team", 5, "Assigned to me", "open"),
         // Also found by the own-repository search; imported once.
-        issue("me/tool", 1, "Unassigned idea", "open"),
+        issue("me/tool", 1, "My idea, assigned to me", "open"),
     ])]);
     gh.own.borrow_mut().push_back(results(&[
-        issue("me/tool", 1, "Unassigned idea", "open"),
-        issue("me/site", 2, "Old fix", "closed"),
+        issue("me/tool", 1, "My idea, assigned to me", "open"),
+        issue("me/site", 2, "My old fix", "closed"),
     ]));
 
     let report = github::sync_issues(&store, &gh).unwrap();
@@ -587,14 +589,14 @@ fn imports_every_issue_of_my_own_repositories_and_only_my_share_elsewhere() {
     let own = &gh.own_calls.borrow()[0];
     assert!(
         own.iter()
-            .any(|a| a == "q=user:me is:issue archived:false sort:updated-desc"),
+            .any(|a| a == "q=user:me author:me is:issue archived:false sort:updated-desc"),
         "{own:?}"
     );
     let elsewhere = &gh.calls.borrow()[0];
     assert!(
         elsewhere
             .iter()
-            .any(|a| a == "q=assignee:@me is:issue -user:me sort:updated-desc"),
+            .any(|a| a == "q=assignee:@me is:issue sort:updated-desc"),
         "{elsewhere:?}"
     );
     assert!(store.find_by_github("me/tool", 1).unwrap().is_some());
