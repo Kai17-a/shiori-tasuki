@@ -659,7 +659,8 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
 }
 
 /* Settings: repositories the GitHub sync skips, one row each with its restore button. */
-.ignored-repo-list { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+/* Capped so each resume button stays near its repository name on wide screens. */
+.ignored-repo-list { display: flex; flex-direction: column; gap: var(--space-2); max-width: 40rem; margin: 0; padding: 0; list-style: none; }
 .ignored-repo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); min-width: 0; }
 .ignored-repo code { overflow-wrap: anywhere; }
 .ignore-repo-form { display: flex; flex-direction: column; gap: var(--space-3); }
