@@ -19,3 +19,9 @@
   .ui-select-option.is-active { outline:2px solid Highlight; outline-offset:-2px; }
   .ui-select-option[aria-selected="true"]::after { color:Highlight; }
 }
+/* Search stays above the independently scrolling list. */
+.ui-select-searchable { overflow:hidden; }
+.ui-select-searchable:popover-open { display:flex; flex-direction:column; gap:var(--space-2); }
+.ui-select-searchable > .form-control { flex-shrink:0; min-width:0; }
+.ui-select-searchable > [role="listbox"] { min-height:0; overflow:auto; overscroll-behavior:contain; }
+.ui-select-searchable > [role="status"] { flex-shrink:0; }
