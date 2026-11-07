@@ -653,3 +653,7 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
 .ignored-repo code { overflow-wrap: anywhere; }
 .ignore-repo-form { display: flex; flex-direction: column; gap: var(--space-3); }
 .ignored-repos-title { margin: 0; font-size: var(--text-base); font-weight: 600; }
+
+/* Overview and board are named by their tab, so the header holds only the tabs and actions. */
+.ui-page-header.is-tabs-only { align-items: center; }
+.ui-page-header.is-tabs-only .header-nav { margin-block-end: 0; }

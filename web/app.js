@@ -9,9 +9,13 @@
     review: 'badge text-bg-warning',
     done: 'badge text-bg-success',
   };
+  /**
+   * Page heading per view. The overview and board are already named by the selected tab,
+   * so their heading is kept only for screen readers and they show no description.
+   */
   const VIEWS = {
-    overview: { title: '概要', description: '自分のタスクを整理し、会話で依頼したAIの作業と結果を確認できます。' },
-    board: { title: 'ボード', description: 'カードを移動して状態を変更できます。同じ色の帯は親子のまとまりで、カードに触れると親と子が線でつながります。' },
+    overview: { title: '概要', description: '', headingInTabs: true },
+    board: { title: 'ボード', description: '', headingInTabs: true },
     activity: { title: 'アクティビティ', description: 'エージェントとあなたが、いつ、どのタスクに何をしたかを新しい順に表示します。' },
     settings: { title: '設定', description: '表示や背景画像の設定、GitHub との同期、AI への依頼方法を確認できます。' },
   };
@@ -1463,8 +1467,12 @@
       loadActivity().catch((err) => notifyError('アクティビティを読み込めませんでした', err));
     }
     $('#activity-back').hidden = currentView !== 'activity';
-    setText('#view-title', VIEWS[currentView].title);
-    setText('#view-description', VIEWS[currentView].description);
+    const view = VIEWS[currentView];
+    setText('#view-title', view.title);
+    $('#view-title').classList.toggle('visually-hidden', Boolean(view.headingInTabs));
+    setText('#view-description', view.description);
+    $('#view-description').hidden = !view.description;
+    pageContent.querySelector('.ui-page-header').classList.toggle('is-tabs-only', Boolean(view.headingInTabs));
     document.title = `${VIEWS[currentView].title} · task-tool`;
     // app.css pins the heading and filter bar of the long views (board, activity).
     pageContent.dataset.currentView = currentView;
