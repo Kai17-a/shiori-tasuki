@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use serde_json::{Value, json};
-use task_tool::github::{self, GhCli};
-use task_tool::{
+use task_manager::github::{self, GhCli};
+use task_manager::{
     Actor, INSTRUCTIONS, NewSubtask, NewTask, ReviewDecision, Scope, Status, Store, Task,
     TaskUpdate,
 };
@@ -24,14 +24,14 @@ use task_tool::{
     reason = "clap prints these doc comments as --help text, where backticks would show"
 )]
 pub(crate) struct Cli {
-    /// Database: --db > TASK_TOOL_DB > $XDG_DATA_HOME/task-tool/tasks.db > $HOME/.local/share/task-tool/tasks.db. Parent folders are created.
-    #[arg(long, global = true, env = "TASK_TOOL_DB")]
+    /// Database: --db > TASK_MANAGER_DB > $XDG_DATA_HOME/task-manager/tasks.db > $HOME/.local/share/task-manager/tasks.db. A database left under the old task-tool folder is used until the new one exists. Parent folders are created.
+    #[arg(long, global = true, env = "TASK_MANAGER_DB")]
     db: Option<PathBuf>,
     /// Actor recorded in history; defaults to claude-code for CLAUDECODE=1, otherwise user. Codex: --as codex.
-    #[arg(long = "as", global = true, env = "TASK_TOOL_ACTOR")]
+    #[arg(long = "as", global = true, env = "TASK_MANAGER_ACTOR")]
     actor: Option<String>,
     /// GitHub repository (owner/name): list filter or default for gh push.
-    #[arg(long, global = true, env = "TASK_TOOL_REPO")]
+    #[arg(long, global = true, env = "TASK_MANAGER_REPO")]
     pub(crate) repo: Option<String>,
     /// Print JSON; optionally select comma-separated top-level fields. View fields: task,subtasks,history.
     #[arg(long, global = true, num_args = 0..=1, default_missing_value = "", value_name = "FIELDS")]
@@ -199,7 +199,7 @@ pub(crate) enum GhCommand {
     /// Create an issue assigned to you and link the resulting task.
     Push {
         id: i64,
-        /// owner/name; overrides the global --repo / TASK_TOOL_REPO default.
+        /// owner/name; overrides the global --repo / TASK_MANAGER_REPO default.
         #[arg(value_name = "REPO")]
         repository: Option<String>,
     },
@@ -227,18 +227,30 @@ pub(crate) enum IgnoreCommand {
     List,
 }
 
+/// The default database under `data`, keeping a database made under the app's
+/// former name (`task-tool`) in use until one exists under the new name.
+fn default_database(data: &std::path::Path) -> PathBuf {
+    let current = data.join("task-manager/tasks.db");
+    let legacy = data.join("task-tool/tasks.db");
+    if !current.exists() && legacy.exists() {
+        return legacy;
+    }
+    current
+}
+
 impl Cli {
     pub(crate) fn database(&self) -> Result<PathBuf> {
         if let Some(db) = &self.db {
             return Ok(db.clone());
         }
-        if let Some(data) = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
-            return Ok(PathBuf::from(data).join("task-tool/tasks.db"));
-        }
-        let home = std::env::var_os("HOME")
-            .filter(|v| !v.is_empty())
-            .context("HOME is not set; set --db, TASK_TOOL_DB or XDG_DATA_HOME")?;
-        Ok(PathBuf::from(home).join(".local/share/task-tool/tasks.db"))
+        let data = match std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
+            Some(data) => PathBuf::from(data),
+            None => std::env::var_os("HOME")
+                .filter(|v| !v.is_empty())
+                .map(|home| PathBuf::from(home).join(".local/share"))
+                .context("HOME is not set; set --db, TASK_MANAGER_DB or XDG_DATA_HOME")?,
+        };
+        Ok(default_database(&data))
     }
 
     fn actor(&self) -> Result<Actor> {
@@ -251,7 +263,7 @@ impl Cli {
         });
         let actor = actor.trim();
         if actor.is_empty() {
-            bail!("actor must not be empty; use --as NAME or TASK_TOOL_ACTOR");
+            bail!("actor must not be empty; use --as NAME or TASK_MANAGER_ACTOR");
         }
         Ok(Actor::from(actor))
     }
@@ -361,7 +373,7 @@ impl Cli {
             Command::Done { id, summary, links } => {
                 let links: Vec<_> = links
                     .iter()
-                    .map(|url| task_tool::work::WorkLink {
+                    .map(|url| task_manager::work::WorkLink {
                         url: url.clone(),
                         label: None,
                     })
@@ -382,7 +394,7 @@ impl Cli {
             Command::Link { id, url, label } => {
                 store.add_link(
                     *id,
-                    &task_tool::work::WorkLink {
+                    &task_manager::work::WorkLink {
                         url: url.clone(),
                         label: label.clone(),
                     },
@@ -486,7 +498,7 @@ impl Cli {
     fn push(&self, store: &Store, id: i64, repository: Option<&str>) -> Result<Task> {
         let repo = repository
             .or(self.repo.as_deref())
-            .context("no repository given; pass owner/name or set --repo / TASK_TOOL_REPO")?;
+            .context("no repository given; pass owner/name or set --repo / TASK_MANAGER_REPO")?;
         Ok(github::push_task(store, &GhCli, id, repo)?)
     }
 }

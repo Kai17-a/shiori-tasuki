@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>task-tool ダッシュボード</title>
+  <title>task-manager ダッシュボード</title>
   <script src="vendor/kav-ui/js/theme-init.js"></script>
   <link rel="stylesheet" href="vendor/kav-ui/css/ui.css">
   <link rel="stylesheet" href="app.css">
@@ -239,14 +239,14 @@
           <section class="fx-col-12 ui-card" id="agent-guide" tabindex="-1" aria-labelledby="mcp-title">
             <div class="ui-card-header"><h2 class="ui-card-title" id="mcp-title">AI エージェントから使う</h2></div>
             <div class="ui-card-body ui-stack">
-              <p class="type-body sp-m-0">会話で <code>/task-tool 12</code>（Claude Code）、<code>$task-tool 12</code>（Codex）、または「task-tool の #12 をやって」と依頼します。task-tool スキルの手順で、AI が CLI を使って作業を進めます。</p>
-              <p class="type-caption sp-m-0">Codex は <code>--as codex</code> または <code>TASK_TOOL_ACTOR=codex</code> で実行者を記録します。</p>
+              <p class="type-body sp-m-0">会話で <code>/task-manager 12</code>（Claude Code）、<code>$task-manager 12</code>（Codex）、または「task-manager の #12 をやって」と依頼します。task-manager スキルの手順で、AI が CLI を使って作業を進めます。</p>
+              <p class="type-caption sp-m-0">Codex は <code>--as codex</code> または <code>TASK_MANAGER_ACTOR=codex</code> で実行者を記録します。</p>
               <p class="type-caption type-color-muted sp-m-0">タスクを登録するだけでは作業は始まりません。AI の完了報告は「確認中」になり、最後にあなたが確認します。</p>
               <details><summary>MCP で接続する</summary>
               <p class="type-caption">MCP サーバーとして登録する場合は、次のコマンドを使います。</p>
               <div class="ui-clipboard">
                 <div class="ui-clipboard-row">
-                  <code class="ui-clipboard-value" id="mcp-command">task-tool mcp</code>
+                  <code class="ui-clipboard-value" id="mcp-command">task-manager mcp</code>
                   <button class="ui-copy-icon" type="button" data-ui-copy-target="#mcp-command" aria-label="コマンドをコピー" title="コマンドをコピー"></button>
                 </div>
                 <p class="ui-copy-status" data-ui-copy-status role="status"></p>

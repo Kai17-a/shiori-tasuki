@@ -356,7 +356,7 @@ impl Store {
 }
 
 pub(crate) fn agent_done_error() -> StoreError {
-    StoreError::Invalid("AI cannot mark tasks done; use complete_task / task-tool done to send work for user review".into())
+    StoreError::Invalid("AI cannot mark tasks done; use complete_task / task-manager done to send work for user review".into())
 }
 impl Store {
     /// Approves a report or returns it to todo with a reason.

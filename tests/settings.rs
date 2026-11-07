@@ -1,5 +1,5 @@
-use task_tool::Store;
-use task_tool::settings::{
+use task_manager::Store;
+use task_manager::settings::{
     BackgroundPosition, BackgroundSettings, BackgroundSize, ImageError, MAX_IMAGE_BYTES,
     sniff_image_type,
 };

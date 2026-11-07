@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use task_tool::activity::EventKind;
-use task_tool::github::{GhError, GhRunner};
-use task_tool::mcp::McpServer;
-use task_tool::{Actor, NewTask, Scope, Store};
+use task_manager::activity::EventKind;
+use task_manager::github::{GhError, GhRunner};
+use task_manager::mcp::McpServer;
+use task_manager::{Actor, NewTask, Scope, Store};
 
 struct NoGh;
 
@@ -63,7 +63,7 @@ fn payload(result: &Value) -> Value {
 }
 
 #[test]
-fn lists_the_task_tools() {
+fn lists_the_task_managers() {
     let (mut server, _) = server();
     let res = server
         .handle(&json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}))
@@ -346,7 +346,7 @@ fn agent_cannot_mark_done_via_update() {
     );
     assert_eq!(
         store.get(task.id).unwrap().unwrap().status,
-        task_tool::Status::Todo
+        task_manager::Status::Todo
     );
 }
 
@@ -362,7 +362,7 @@ fn external_content_update_is_a_tool_error() {
     store
         .link_github(
             task.id,
-            &task_tool::GithubLink {
+            &task_manager::GithubLink {
                 repo: "o/r".into(),
                 number: 1,
                 url: "https://github.com/o/r/issues/1".into(),

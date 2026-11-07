@@ -1,5 +1,5 @@
-use task_tool::activity::EventKind;
-use task_tool::{
+use task_manager::activity::EventKind;
+use task_manager::{
     Actor, NewSubtask, NewTask, ReviewDecision, Status, Store, StoreError, TaskUpdate,
 };
 
@@ -7,7 +7,7 @@ fn store() -> Store {
     Store::open_in_memory().expect("in-memory store opens")
 }
 
-fn task(store: &Store, title: &str) -> task_tool::Task {
+fn task(store: &Store, title: &str) -> task_manager::Task {
     store
         .create(&NewTask {
             title: title.into(),

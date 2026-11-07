@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use task_tool::Store;
-use task_tool::github::{GhCli, GhRunner};
-use task_tool::mcp::McpServer;
-use task_tool::sync::Syncer;
-use task_tool::web::{self, AppState, HostPolicy};
+use task_manager::Store;
+use task_manager::github::{GhCli, GhRunner};
+use task_manager::mcp::McpServer;
+use task_manager::sync::Syncer;
+use task_manager::web::{self, AppState, HostPolicy};
 
 #[tokio::main]
 async fn main() {
@@ -69,7 +69,7 @@ async fn serve(store: Store, addr: SocketAddr, db: &Path, repo: Option<String>) 
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("listening on {addr}"))?;
-    println!("task-tool admin page: http://{addr}/");
+    println!("task-manager admin page: http://{addr}/");
     axum::serve(listener, web::router(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
@@ -84,11 +84,11 @@ async fn serve(store: Store, addr: SocketAddr, db: &Path, repo: Option<String>) 
 /// T3 Code that run each session in its own working directory.
 fn mcp_command(db: &Path, repo: Option<&str>) -> String {
     let exe =
-        std::env::current_exe().map_or_else(|_| "task-tool".into(), |p| p.display().to_string());
+        std::env::current_exe().map_or_else(|_| "task-manager".into(), |p| p.display().to_string());
     let db = std::path::absolute(db).unwrap_or_else(|_| db.to_path_buf());
     let repo = repo.map_or_else(String::new, |r| format!(" --repo {}", shell_quote(r)));
     format!(
-        "claude mcp add --scope user task-tool -- {} --db {}{repo} mcp",
+        "claude mcp add --scope user task-manager -- {} --db {}{repo} mcp",
         shell_quote(&exe),
         shell_quote(&db.display().to_string())
     )

@@ -1,4 +1,4 @@
-use task_tool::{
+use task_manager::{
     Actor, NewSubtask, NewTask, ReviewDecision, SessionOutcome, Status, Store, TaskUpdate,
 };
 
@@ -194,7 +194,7 @@ fn review_rejection_and_sessions_preserve_each_attempt() {
             .events_for(task.id, 100)
             .unwrap()
             .iter()
-            .any(|e| e.kind == task_tool::activity::EventKind::Rejected
+            .any(|e| e.kind == task_manager::activity::EventKind::Rejected
                 && e.message == "Add regression coverage")
     );
     store
@@ -279,7 +279,7 @@ fn git_evidence_records_commits_files_and_dirty_work() {
     assert_eq!(evidence.untracked, vec!["new.txt"]);
     assert_ne!(session.start_git.unwrap().head, evidence.head);
     let non_git = tempfile::tempdir().unwrap();
-    assert!(task_tool::git_evidence::capture(non_git.path().to_str(), None).is_none());
+    assert!(task_manager::git_evidence::capture(non_git.path().to_str(), None).is_none());
     let plain = store
         .create(&NewTask {
             title: "Non git".into(),
@@ -300,7 +300,7 @@ fn git_evidence_records_commits_files_and_dirty_work() {
 
 #[test]
 fn links_validate_and_family_timeline_is_ordered() {
-    use task_tool::work::WorkLink;
+    use task_manager::work::WorkLink;
     let store = Store::open_in_memory().unwrap();
     let root = store
         .create(&NewTask {
@@ -386,11 +386,11 @@ fn links_validate_and_family_timeline_is_ordered() {
     assert!(
         events
             .iter()
-            .position(|e| e.kind == task_tool::activity::EventKind::Started)
+            .position(|e| e.kind == task_manager::activity::EventKind::Started)
             .unwrap()
             < events
                 .iter()
-                .position(|e| e.kind == task_tool::activity::EventKind::Reported)
+                .position(|e| e.kind == task_manager::activity::EventKind::Reported)
                 .unwrap()
     );
 }
