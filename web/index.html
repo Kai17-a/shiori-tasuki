@@ -123,7 +123,7 @@
             </div>
             <div class="ui-toolbar-group">
               <label for="board-source">表示</label>
-              <select class="form-select form-select-sm ui-w-auto" id="board-source">
+              <select class="form-select form-select-sm ui-w-auto" id="board-source" data-ui-searchable>
                 <option value="all" selected>すべて</option>
                 <option value="local">ローカルのタスク</option>
                 <option value="github">GitHub: すべて</option>
@@ -224,9 +224,8 @@
                 <ul class="ignored-repo-list" id="ignored-repos" role="list"></ul>
                 <form class="ignore-repo-form" id="ignore-repo-form" novalidate>
                   <div class="field">
-                    <label for="ignore-repo">リポジトリ（owner/name）</label>
-                    <input class="form-control" id="ignore-repo" name="repo" list="ignore-repo-options" autocomplete="off" spellcheck="false" placeholder="Kai17-a/example" required pattern="[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+">
-                    <datalist id="ignore-repo-options"></datalist>
+                    <label for="ignore-repo">リポジトリ</label>
+                    <select class="form-select" id="ignore-repo" name="repo" data-ui-searchable required><option value="">選んでください</option></select>
                   </div>
                   <div><button class="btn btn-outline-danger" type="submit">取り込まないリポジトリに追加</button></div>
                 </form>
@@ -343,7 +342,7 @@
       <div class="field" data-ui-field><label for="new-title">題名（必須）</label><input class="form-control" id="new-title" name="title" required maxlength="200" pattern=".*\S.*"><small class="ui-invalid-feedback" data-ui-error hidden></small></div>
       <div class="field"><label for="new-description">説明</label><textarea class="form-control" id="new-description" name="description" rows="3"></textarea></div>
       <div class="field"><label for="new-workdir">作業フォルダ</label><input class="form-control" id="new-workdir" name="workdir" placeholder="/home/user/workspaces/project"><small>AIはこのフォルダで作業します。未指定の子タスクは親から引き継ぎます。</small></div>
-      <div class="field"><label for="new-parent">親タスク</label><select class="form-select" id="new-parent" name="parent_id"><option value="">なし</option></select></div>
+      <div class="field"><label for="new-parent">親タスク</label><select class="form-select" id="new-parent" name="parent_id" data-ui-searchable><option value="">なし</option></select></div>
       <div class="ui-cluster"><button class="btn btn-primary" type="submit">作成</button><button class="btn btn-outline-secondary" type="button" data-ui-dismiss="dialog">キャンセル</button></div>
     </form>
   </dialog>

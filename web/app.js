@@ -271,6 +271,26 @@
   const REPO_SOURCE = 'repo:';
 
   /**
+   * Options for `owner/name` repositories, grouped under one heading per owner. Each option
+   * shows the name only; the full name stays searchable through `data-ui-keywords`.
+   */
+  function repoOptionGroups(repos, value = (repo) => repo, suffix = () => '') {
+    const owners = new Map();
+    for (const repo of repos) {
+      const owner = repo.split('/')[0];
+      if (!owners.has(owner)) owners.set(owner, []);
+      owners.get(owner).push(repo);
+    }
+    return [...owners.keys()]
+      .sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }))
+      .map((owner) => `<optgroup label="${escapeHtml(owner)}">${owners.get(owner)
+        .sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }))
+        .map((repo) => `<option value="${escapeHtml(value(repo))}" data-ui-keywords="${escapeHtml(repo)}">${escapeHtml(repo.slice(owner.length + 1) + suffix(repo))}</option>`)
+        .join('')}</optgroup>`)
+      .join('');
+  }
+
+  /**
    * Rebuilds the board's source filter with one entry per synced repository, keeping the
    * current choice; a repository that no longer has issues falls back to everything.
    */
@@ -279,20 +299,15 @@
     for (const task of tasks) {
       if (task.github) counts.set(task.github.repo, (counts.get(task.github.repo) ?? 0) + 1);
     }
-    const repos = [...counts.keys()].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
-    const options = [
-      ['all', 'すべて'],
-      ['local', 'ローカルのタスク'],
-      ['github', `GitHub: すべて（${tasks.filter((t) => t.github).length}）`],
-      ...repos.map((repo) => [REPO_SOURCE + repo, `${repo}（${counts.get(repo)}）`]),
-    ];
-    const html = options
-      .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
-      .join('');
+    const repos = [...counts.keys()];
+    const html = '<option value="all">すべて</option><option value="local">ローカルのタスク</option>'
+      + `<option value="github">GitHub: すべて（${tasks.filter((t) => t.github).length}）</option>`
+      + repoOptionGroups(repos, (repo) => REPO_SOURCE + repo, (repo) => `（${counts.get(repo)}）`);
     if (sourceSelect.innerHTML === html) return;
     const current = sourceSelect.value;
     sourceSelect.innerHTML = html;
-    sourceSelect.value = options.some(([value]) => value === current) ? current : 'all';
+    const kept = ['all', 'local', 'github'].includes(current) || repos.some((repo) => REPO_SOURCE + repo === current);
+    setSelectValue(sourceSelect, kept ? current : 'all');
   }
 
   function visibleTasks(tree) {
@@ -879,12 +894,18 @@
   const ignoreForm = $('#ignore-repo-form');
   const sameRepo = (a, b) => a.toLowerCase() === b.toLowerCase();
 
-  /** Suggests the imported repositories that are not ignored yet. */
+  /** Offers the imported repositories that are not ignored yet. */
   function renderRepoOptions() {
+    const select = $('#ignore-repo');
     const repos = [...new Set(tasks.filter((t) => t.github).map((t) => t.github.repo))]
-      .filter((repo) => !ignoredRepos.some((r) => sameRepo(r, repo)))
-      .sort((a, b) => a.localeCompare(b));
-    $('#ignore-repo-options').innerHTML = repos.map((repo) => `<option value="${escapeHtml(repo)}"></option>`).join('');
+      .filter((repo) => !ignoredRepos.some((r) => sameRepo(r, repo)));
+    const current = select.value;
+    const html = `<option value="">${repos.length ? '選んでください' : '取り込み済みのリポジトリはありません'}</option>`
+      + repoOptionGroups(repos);
+    if (select.innerHTML !== html) select.innerHTML = html;
+    select.disabled = repos.length === 0;
+    ignoreForm.querySelector('[type="submit"]').disabled = repos.length === 0;
+    setSelectValue(select, repos.includes(current) ? current : '');
   }
 
   function renderIgnoredRepos(repos) {
@@ -901,9 +922,9 @@
   ignoreForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const input = $('#ignore-repo');
-    const repo = input.value.trim();
-    if (!input.checkValidity() || !repo) {
-      notifyError('追加できませんでした', new Error('リポジトリは owner/name の形で入力してください。'));
+    const repo = input.value;
+    if (!repo) {
+      notifyError('追加できませんでした', new Error('リポジトリを選んでください。'));
       return;
     }
     const button = ignoreForm.querySelector('[type="submit"]');
@@ -916,14 +937,13 @@
         : '';
       if (!window.confirm(`${repo} の Issue を取り込まないようにします。${warning}`)) return;
       const result = await api('POST', '/api/settings/github/ignored', { repo });
-      input.value = '';
       renderIgnoredRepos(result.settings.github.ignored_repos);
       await refresh();
       notifySuccess('取り込まないリポジトリに追加しました', result.deleted > 0 ? `タスク ${result.deleted} 件を削除しました。` : '');
     } catch (err) {
       notifyError('追加できませんでした', err);
     } finally {
-      button.disabled = false;
+      renderRepoOptions();
     }
   });
 
