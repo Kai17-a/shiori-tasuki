@@ -2,7 +2,7 @@
 
 自分の作業を整理するためのタスク管理アプリです。ダッシュボードやCLIで整理し、会話でAIに依頼すると、エージェントがMCPで経過と結果を報告します。タスクを登録しただけでは実行されません。1 つのバイナリで、次の 4 つの使い方ができます。
 
-- ブラウザの管理画面（Kav-UI のダッシュボード。glassmorphism テーマ）
+- ブラウザの管理画面（ダッシュボード）
 - AI エージェント向けの MCP サーバー（stdio）
 - GitHub Issue の自動同期（自分のリポジトリで自分が作った Issue と、自分が担当の Issue）と Issue の作成（`gh` コマンドを使用）
 - コマンドラインからの操作
@@ -16,7 +16,7 @@ cargo build --release
 cargo install --path .  # task-manager を PATH に追加
 ```
 
-管理画面の HTML と Kav-UI の CSS・JS はバイナリに埋め込まれます。実行時に `web/` フォルダは不要です。
+管理画面の HTML・CSS・JS はバイナリに埋め込まれます。実行時に `web/` フォルダは不要です。
 
 ## 管理画面
 
@@ -210,8 +210,6 @@ Codex は TASK_MANAGER_ACTOR=codex を設定する（Claude Code は自動判定
 ```sh
 cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
 ```
-
-`web/vendor/kav-ui/` は Kav-UI の配布物です。GitHub Releases の ZIP（版は `web/vendor/kav-ui/VERSION`）を展開した `kav-ui/assets` の中身で、取得元と更新手順は `web/vendor/kav-ui/SOURCE.md` に書いてあります。このフォルダのファイルは直接編集しません。画面固有のスタイルは `web/app.css` に書きます。
 
 ボードで「子タスクを表示」がオンのとき、「並べる／重ねる」を選べます。
 「重ねる」は列ごとに同じ親のカードをまとめ、「+N 件」で展開できます。表示方法はブラウザに保存されます。
