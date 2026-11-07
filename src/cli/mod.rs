@@ -131,15 +131,19 @@ pub(crate) enum Command {
         #[arg(long = "link")]
         links: Vec<String>,
     },
-    /// Approve a reported task (user only).
+    /// Approve a reported task. An AI agent may run this only when the user approved it in
+    /// the conversation, quoting the user's words in --comment.
     Approve {
         id: i64,
+        /// Optional for the user; for an AI agent, the user's words approving the work.
         #[arg(long, default_value = "")]
         comment: String,
     },
-    /// Return a report for another attempt (user only).
+    /// Return a report for another attempt. An AI agent may run this only when the user
+    /// asked for changes in the conversation, quoting the user's words in --reason.
     Reject {
         id: i64,
+        /// What to change; for an AI agent, the user's words.
         #[arg(long)]
         reason: String,
     },
@@ -495,12 +499,13 @@ fn review(
     decision: ReviewDecision,
     comment: &str,
 ) -> Result<Value> {
-    Ok(serde_json::to_value(store.review_task(
-        id,
-        actor,
-        decision,
-        &text(comment)?,
-    )?)?)
+    let comment = text(comment)?;
+    let task = if actor.is_agent() {
+        store.review_for_user(id, actor, decision, &comment)?
+    } else {
+        store.review_task(id, actor, decision, &comment)?
+    };
+    Ok(serde_json::to_value(task)?)
 }
 
 /// Adds a repository to the ignore list (deleting its imported tasks) or takes it off.

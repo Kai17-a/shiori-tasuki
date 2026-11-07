@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
+use task_tool::activity::EventKind;
 use task_tool::github::{GhError, GhRunner};
 use task_tool::mcp::McpServer;
 use task_tool::{Actor, NewTask, Scope, Store};
@@ -84,6 +85,7 @@ fn lists_the_task_tools() {
         "add_note",
         "complete_task",
         "fail_task",
+        "record_user_review",
         "push_task_to_github",
     ] {
         assert!(
@@ -408,4 +410,42 @@ fn a_client_cannot_take_the_persons_name() {
         );
         assert_eq!(done["isError"], true, "{name} must not finish work");
     }
+}
+
+#[test]
+fn an_agent_records_the_users_review_only_with_their_words() {
+    let (mut server, store) = server();
+    let task = store
+        .create(&NewTask {
+            title: "Review me".into(),
+            ..NewTask::default()
+        })
+        .unwrap();
+    call(&mut server, "start_task", json!({"id": task.id}));
+    call(
+        &mut server,
+        "complete_task",
+        json!({"id": task.id, "summary": "Done"}),
+    );
+
+    let blank = call(
+        &mut server,
+        "record_user_review",
+        json!({"id": task.id, "decision": "approve", "user_said": " "}),
+    );
+    assert_eq!(blank["isError"], true, "the user's words are required");
+
+    let approved = call(
+        &mut server,
+        "record_user_review",
+        json!({"id": task.id, "decision": "approve", "user_said": "OK です"}),
+    );
+    assert_eq!(payload(&approved)["status"], "done", "{approved}");
+    let history = store.events_for(task.id, 50).unwrap();
+    let event = history
+        .iter()
+        .find(|e| e.kind == EventKind::Approved)
+        .unwrap();
+    assert_eq!(event.actor, "claude-code");
+    assert_eq!(event.message, "OK です");
 }

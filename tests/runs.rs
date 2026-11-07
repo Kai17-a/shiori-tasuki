@@ -411,3 +411,39 @@ fn start_records_the_thread_the_caller_names() {
     assert_eq!(sessions[0].thread_id.as_deref(), Some("thread-42"));
     assert_eq!(sessions[0].outcome, SessionOutcome::Running);
 }
+
+#[test]
+fn a_review_for_the_user_needs_an_agent_their_words_and_a_report() {
+    let store = Store::open_in_memory().unwrap();
+    let task = store
+        .create(&NewTask {
+            title: "Work".into(),
+            ..NewTask::default()
+        })
+        .unwrap();
+    let agent = Actor::from("codex");
+    assert!(
+        store
+            .review_for_user(task.id, &agent, ReviewDecision::Approve, "OK")
+            .is_err(),
+        "only a task under review"
+    );
+    store.start_task(task.id, &agent, None).unwrap();
+    store.complete_task(task.id, &agent, "Done").unwrap();
+    assert!(
+        store
+            .review_for_user(task.id, &Actor::User, ReviewDecision::Approve, "OK")
+            .is_err(),
+        "the user reviews directly"
+    );
+    assert!(
+        store
+            .review_for_user(task.id, &agent, ReviewDecision::Approve, "  ")
+            .is_err(),
+        "the user's words are required"
+    );
+    let done = store
+        .review_for_user(task.id, &agent, ReviewDecision::Approve, "OK")
+        .unwrap();
+    assert_eq!(done.status, Status::Done);
+}

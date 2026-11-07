@@ -484,14 +484,13 @@ fn agents_cannot_bypass_review_and_thread_id_is_captured() {
         .output()
         .unwrap();
     assert!(o.status.success());
-    for args in [
-        vec!["--as", "codex", "edit", "1", "--status", "done"],
-        vec!["--as", "codex", "approve", "1"],
-    ] {
-        let o = c.run(&args);
-        assert!(!o.status.success());
-        assert!(String::from_utf8_lossy(&o.stderr).contains("complete_task"));
-    }
+    let o = c.run(&["--as", "codex", "edit", "1", "--status", "done"]);
+    assert!(!o.status.success());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("complete_task"));
+    // An agent records a review only with the user's words.
+    let o = c.run(&["--as", "codex", "approve", "1"]);
+    assert!(!o.status.success());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("what the user said"));
     c.json(&[
         "--as",
         "codex",
@@ -520,6 +519,69 @@ fn agents_cannot_bypass_review_and_thread_id_is_captured() {
     ]);
     c.json(&["approve", "1", "--comment", "Checked", "--json"]);
     assert_eq!(c.json(&["view", "1", "--json"])["task"]["status"], "done");
+}
+
+#[test]
+fn an_agent_records_the_review_the_user_gave_in_the_conversation() {
+    let c = Cli::new();
+    c.json(&["create", "Task", "--json"]);
+    c.json(&["--as", "codex", "start", "1", "--json"]);
+    c.json(&["--as", "codex", "done", "1", "--summary", "Done", "--json"]);
+    let o = c.run(&["--as", "codex", "approve", "2", "--comment", "OK"]);
+    assert!(!o.status.success(), "an unknown task is refused");
+
+    c.json(&[
+        "--as",
+        "codex",
+        "reject",
+        "1",
+        "--reason",
+        "ボタンの色を変えて",
+        "--json",
+    ]);
+    let v = c.json(&["view", "1", "--json"]);
+    assert_eq!(v["task"]["status"], "todo");
+    let last = v["history"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|e| e["kind"] == "rejected")
+        .expect("the rejection is recorded");
+    assert_eq!(
+        last["actor"], "codex",
+        "the history names the agent that recorded it"
+    );
+    assert_eq!(last["message"], "ボタンの色を変えて");
+
+    c.json(&["--as", "codex", "start", "1", "--json"]);
+    c.json(&[
+        "--as",
+        "codex",
+        "done",
+        "1",
+        "--summary",
+        "Changed",
+        "--json",
+    ]);
+    c.json(&[
+        "--as",
+        "codex",
+        "approve",
+        "1",
+        "--comment",
+        "いいね",
+        "--json",
+    ]);
+    let v = c.json(&["view", "1", "--json"]);
+    assert_eq!(v["task"]["status"], "done");
+    assert!(
+        v["history"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["kind"] == "approved" && e["actor"] == "codex" && e["message"] == "いいね")
+    );
 }
 
 #[test]

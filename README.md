@@ -95,16 +95,19 @@ AIはユーザーが会話で依頼したタスクだけを扱います。`get_t
 
 ## 確認の流れと AI の作業記録
 
-AI は着手前に履歴の差し戻し理由を読み、報告には実施内容・検証結果・PRなどのリンクを添えます。AI の `complete_task` / `done` は「確認中」にし、ユーザーが承認して初めて完了します。ユーザー自身の `done` は直接完了します。AI の `update_task` / `edit --status done` / `approve` は拒否します。
+AI は着手前に履歴の差し戻し理由を読み、報告には実施内容・検証結果・PRなどのリンクを添えます。AI の `complete_task` / `done` は「確認中」にし、ユーザーが承認して初めて完了します。ユーザー自身の `done` は直接完了します。AI の `update_task` / `edit --status done` は拒否します。
+
+ユーザーが会話で承認や修正を指示したときは、AI がそれを記録できます（MCP の `record_user_review`、CLI では AI の名前での `approve` / `reject`）。画面で操作し直す必要はありません。AI はユーザーの言葉を引用して記録し、自分の判断では使いません。履歴には記録した AI の名前とユーザーの言葉が残り、画面では「会話での承認を claude-code が記録」のように、自分で押した承認と区別して表示します。差し戻したときは、AI がそのまま着手し直して修正します。
 
 ```sh
 task-tool --as codex done 12 --summary '実装・検証結果' --link https://example.com/pull/12
 task-tool --as codex link 12 https://example.com/results --label '検証結果'
 task-tool --as user approve 12 --comment '確認しました'
 task-tool --as user reject 12 --reason '境界条件のテストを追加してください'
+task-tool --as codex approve 12 --comment 'OK、これで完了で'   # 会話での承認を AI が記録
 ```
 
-`approve --comment` は任意です。`reject --reason` は必須で、どちらも `-` で標準入力を読めます。差し戻しは未着手に戻して担当を解除し、理由を履歴に残します。親はすべての子が完了したときだけ自動完了し、確認中の子がある間は開いたままです。確認中は停滞に数えません。
+`approve --comment` はユーザーには任意、AI にはユーザーの言葉として必須です。`reject --reason` は必須で、どちらも `-` で標準入力を読めます。差し戻しは未着手に戻して担当を解除し、理由を履歴に残します。親はすべての子が完了したときだけ自動完了し、確認中の子がある間は開いたままです。確認中は停滞に数えません。
 
 `start_task` / `start` ごとに作業セッションを開き、報告または中止で閉じます。開いたまま再着手すると前のセッションは abandoned になります。担当・開始終了時刻・結果・作業フォルダ・環境変数 `T3CODE_THREAD_ID` を記録します。環境IDの信頼できる取得元を確認できないため、T3スレッドはURLを推測せず、モーダルにコピーできるIDとして表示します。
 

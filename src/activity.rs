@@ -380,6 +380,43 @@ impl Store {
         } else {
             validate_note(comment)?
         };
+        self.record_review(id, actor, decision, comment)
+    }
+
+    /// Records an approval or rejection the person gave an AI agent in a conversation, so
+    /// the person need not open the dashboard to repeat it. The history names the agent
+    /// that recorded it and keeps the person's words, so it stays apart from approvals the
+    /// person made themselves. Agents must never call this on their own judgment.
+    ///
+    /// # Errors
+    ///
+    /// Rejects actors that are not agents, blank `user_said`, and tasks not under review.
+    pub fn review_for_user(
+        &self,
+        id: i64,
+        agent: &Actor,
+        decision: ReviewDecision,
+        user_said: &str,
+    ) -> Result<Task, StoreError> {
+        if !agent.is_agent() {
+            return Err(StoreError::Invalid(
+                "only an AI agent records a review for the user; the user reviews directly".into(),
+            ));
+        }
+        let user_said = validate_note(user_said).map_err(|_| {
+            StoreError::Invalid("quote what the user said (1-4000 characters)".into())
+        })?;
+        self.record_review(id, agent, decision, user_said)
+    }
+
+    fn record_review(
+        &self,
+        id: i64,
+        actor: &Actor,
+        decision: ReviewDecision,
+        comment: &str,
+    ) -> Result<Task, StoreError> {
+        let approve = decision == ReviewDecision::Approve;
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let status: String = tx

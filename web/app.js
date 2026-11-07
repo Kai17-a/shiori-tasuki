@@ -123,8 +123,9 @@
     switch (event.kind) {
       case 'started': return `${who}が着手`;
       case 'reported': return `${who}が完了を報告（確認待ち）`;
-      case 'approved': return `${who}が承認`;
-      case 'rejected': return `${who}が差し戻し`;
+      // An agent records an approval or change request only when the person gave it in a conversation.
+      case 'approved': return isAgentName(event.actor) ? `会話での承認を${who}が記録` : `${who}が承認`;
+      case 'rejected': return isAgentName(event.actor) ? `会話での差し戻しを${who}が記録` : `${who}が差し戻し`;
       case 'failed': return `${who}が中止`;
       case 'created': return `${who}がタスクを作成`;
       case 'status': return `${who}が「${STATUS_LABELS[event.from_status] ?? '?'}」→「${STATUS_LABELS[event.to_status] ?? '?'}」に変更`;
@@ -1282,6 +1283,7 @@
           <div><button class="btn btn-outline-danger" type="submit" icon="mdi-undo">差し戻し</button></div>
         </form>
       </div>
+      <p class="type-caption type-color-muted sp-m-0">会話で AI に「OK」や「ここを直して」と伝えても、AI がその言葉で承認・差し戻しを記録します。</p>
     </section>`;
   }
 

@@ -249,7 +249,9 @@ impl McpServer {
     fn run_tool(&self, name: &str, args: Value) -> Result<Value, String> {
         match name {
             "list_tasks" | "get_task" | "get_stats" => self.read_tool(name, args),
-            "start_task" | "add_note" | "complete_task" | "fail_task" => self.work_tool(name, args),
+            "start_task" | "add_note" | "complete_task" | "fail_task" | "record_user_review" => {
+                self.work_tool(name, args)
+            }
             _ => self.edit_tool(name, args),
         }
     }
@@ -369,6 +371,20 @@ impl McpServer {
                 to_json(
                     &store
                         .fail_task(a.id, &self.actor, &a.reason)
+                        .map_err(|e| e.to_string())?,
+                )
+            }
+            "record_user_review" => {
+                #[derive(Deserialize)]
+                struct A {
+                    id: i64,
+                    decision: crate::ReviewDecision,
+                    user_said: String,
+                }
+                let a: A = args_of(args)?;
+                to_json(
+                    &store
+                        .review_for_user(a.id, &self.actor, a.decision, &a.user_said)
                         .map_err(|e| e.to_string())?,
                 )
             }
@@ -544,7 +560,7 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "complete_task",
-            "description": "Report work for user review. Include what changed, verification, and artifact links. Only the user can approve completion.",
+            "description": "Report work for user review. Include what changed, verification, and artifact links. Only the user approves it, in the dashboard or by telling you (then use record_user_review).",
             "inputSchema": { "type": "object", "properties": {
                 "id": { "type": "integer" },
                 "summary": { "type": "string" },
@@ -558,6 +574,15 @@ fn tool_definitions() -> Value {
                 "id": { "type": "integer" },
                 "reason": { "type": "string" }
             }, "required": ["id", "reason"] }
+        },
+        {
+            "name": "record_user_review",
+            "description": "Record the approval or change request the user gave you in this conversation for a task under review, so the user need not repeat it in the dashboard. Call it only when the user said so; never on your own judgment. After a reject, the task returns to todo: start it again and make the requested changes.",
+            "inputSchema": { "type": "object", "properties": {
+                "id": { "type": "integer" },
+                "decision": { "type": "string", "enum": ["approve", "reject"] },
+                "user_said": { "type": "string", "description": "The user's words, quoted; for a reject, what to change" }
+            }, "required": ["id", "decision", "user_said"] }
         },
         {
             "name": "get_stats",
