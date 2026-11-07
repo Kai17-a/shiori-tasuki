@@ -111,11 +111,22 @@ fn lifecycle_and_attribution() {
             .all(|e| e["actor"] == "codex" || e["actor"] == "user")
     );
     assert_eq!(c.json(&["stats", "--json", "total"]), json!({"total":3}));
-    let denied = c.run(&["delete", "1"]);
-    assert!(!denied.status.success());
-    assert!(String::from_utf8_lossy(&denied.stderr).contains("--yes"));
-    c.json(&["delete", "1", "--yes", "--json"]);
+    let hidden = c.json(&["hide", "1", "--json", "hidden_at"]);
+    assert!(hidden["hidden_at"].is_string(), "{hidden}");
     assert_eq!(c.json(&["list", "--all", "--json"]), json!([]));
+    assert_eq!(
+        c.json(&["list", "--all", "--hidden", "--json", "id"])
+            .as_array()
+            .map(Vec::len),
+        Some(3)
+    );
+    c.json(&["unhide", "1", "--json"]);
+    assert_eq!(
+        c.json(&["list", "--all", "--json", "id"])
+            .as_array()
+            .map(Vec::len),
+        Some(3)
+    );
 }
 
 #[test]
@@ -255,7 +266,11 @@ fn stdin_aliases_and_agent_environment() {
             .iter()
             .any(|e| e["message"] == "First line\nSecond line")
     );
-    assert!(c.run(&["rm", "1", "--yes"]).status.success());
+    assert!(c.run(&["hide", "1"]).status.success());
+    assert!(
+        !c.run(&["rm", "1", "--yes"]).status.success(),
+        "tasks can no longer be deleted"
+    );
 }
 
 #[test]
@@ -425,7 +440,8 @@ fn help_guide_and_parse_errors_need_no_database() {
         "show",
         "update",
         "comment",
-        "rm",
+        "hide",
+        "unhide",
         "XDG_DATA_HOME",
         "TASK_TOOL_ACTOR",
     ] {

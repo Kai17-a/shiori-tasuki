@@ -1,9 +1,9 @@
-//! Aggregates shown on the admin dashboard.
+//! Aggregates shown on the admin dashboard. Hidden tasks are left out of every figure.
 
 use rusqlite::{Connection, params};
 use serde::Serialize;
 
-use crate::store::{SELECT, Store, StoreError, task_from_row};
+use crate::store::{Store, StoreError, VISIBLE_SELECT, task_from_row};
 use crate::task::Task;
 
 /// In-progress work with no history entry for this long counts as stalled: the agent
@@ -111,7 +111,8 @@ impl Store {
         let conn = self.conn();
         let cutoff = stall_cutoff();
         let mut by_status = StatusCounts::default();
-        let mut stmt = conn.prepare("SELECT status, COUNT(*) FROM tasks GROUP BY status")?;
+        let mut stmt =
+            conn.prepare("SELECT status, COUNT(*) FROM visible_tasks GROUP BY status")?;
         for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u32>(1)?)))? {
             let (status, count) = row?;
             match status.as_str() {
@@ -125,14 +126,14 @@ impl Store {
         let total = by_status.todo + by_status.in_progress + by_status.review + by_status.done;
 
         Ok(Stats {
-            awaiting_review: collect(&conn, &format!("{SELECT} WHERE t.status = 'review' ORDER BY t.updated_at"), task_from_row)?.into_iter().map(|task| {
+            awaiting_review: collect(&conn, &format!("{VISIBLE_SELECT} WHERE t.status = 'review' ORDER BY t.updated_at"), task_from_row)?.into_iter().map(|task| {
                 let report: (String,String,String) = conn.query_row("SELECT actor,created_at,message FROM task_events WHERE task_id=?1 AND kind='reported' ORDER BY id DESC LIMIT 1", [task.id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap_or((task.assignee.clone().unwrap_or_default(),task.updated_at.clone(),String::new()));
                 ReviewSummary { task,agent:report.0,reported_at:report.1,summary:report.2.lines().next().unwrap_or_default().to_owned() }
             }).collect(),
             total,
             by_status,
             completed_last_7_days: conn.query_row(
-                "SELECT COUNT(*) FROM tasks
+                "SELECT COUNT(*) FROM visible_tasks
                  WHERE status = 'done' AND completed_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-7 days')",
                 [],
                 |r| r.get(0),
@@ -140,7 +141,7 @@ impl Store {
             daily: daily(&conn)?,
             by_repo: collect(
                 &conn,
-                "SELECT gh_repo, SUM(status != 'done'), SUM(status = 'done') FROM tasks
+                "SELECT gh_repo, SUM(status != 'done'), SUM(status = 'done') FROM visible_tasks
                  WHERE parent_id IS NULL GROUP BY gh_repo ORDER BY gh_repo IS NOT NULL, gh_repo",
                 |r| {
                     Ok(RepoCount {
@@ -152,7 +153,7 @@ impl Store {
             )?,
             by_creator: collect(
                 &conn,
-                "SELECT created_by, COUNT(*) FROM tasks GROUP BY created_by
+                "SELECT created_by, COUNT(*) FROM visible_tasks GROUP BY created_by
                  ORDER BY COUNT(*) DESC, created_by",
                 |r| {
                     Ok(CreatorCount {
@@ -163,11 +164,11 @@ impl Store {
             )?,
             recent: collect(
                 &conn,
-                &format!("{SELECT} ORDER BY t.updated_at DESC, t.id DESC LIMIT {RECENT_LIMIT}"),
+                &format!("{VISIBLE_SELECT} ORDER BY t.updated_at DESC, t.id DESC LIMIT {RECENT_LIMIT}"),
                 task_from_row,
             )?,
             completed_today: conn.query_row(
-                "SELECT COUNT(*) FROM tasks WHERE status = 'done'
+                "SELECT COUNT(*) FROM visible_tasks WHERE status = 'done'
                  AND date(completed_at, 'localtime') = date('now', 'localtime')",
                 [],
                 |r| r.get(0),
@@ -175,9 +176,9 @@ impl Store {
             stalled: collect(
                 &conn,
                 &format!(
-                    "SELECT * FROM ({SELECT}) AS s
+                    "SELECT * FROM ({VISIBLE_SELECT}) AS s
                      WHERE s.status = 'in_progress' AND s.last_activity_at < {cutoff}
-                       AND NOT EXISTS (SELECT 1 FROM tasks c
+                       AND NOT EXISTS (SELECT 1 FROM visible_tasks c
                                        WHERE c.parent_id = s.id AND c.status != 'done')
                      ORDER BY s.last_activity_at"
                 ),
@@ -188,7 +189,7 @@ impl Store {
             with_subtasks: collect(
                 &conn,
                 &format!(
-                    "SELECT * FROM ({SELECT} WHERE t.status != 'done') AS s
+                    "SELECT * FROM ({VISIBLE_SELECT} WHERE t.status != 'done') AS s
                      WHERE s.subtask_total > 0
                      ORDER BY CAST(s.subtask_done AS REAL) / s.subtask_total, s.id
                      LIMIT {PROGRESS_LIMIT}"
@@ -211,14 +212,14 @@ fn agents(conn: &Connection) -> Result<Vec<AgentSummary>, StoreError> {
         &format!(
             "WITH names(name) AS (
                 SELECT actor FROM task_events
-                UNION SELECT assignee FROM tasks WHERE assignee IS NOT NULL
-                UNION SELECT created_by FROM tasks
+                UNION SELECT assignee FROM visible_tasks WHERE assignee IS NOT NULL
+                UNION SELECT created_by FROM visible_tasks
              ),
              activity AS (
                 SELECT t.id, t.status, t.assignee, t.completed_at,
                        COALESCE((SELECT MAX(e.created_at) FROM task_events e WHERE e.task_id = t.id),
                                 t.updated_at) AS last_at
-                FROM tasks t
+                FROM visible_tasks t
              )
              SELECT n.name,
                 (SELECT COUNT(*) FROM activity a WHERE a.status = 'in_progress' AND a.assignee = n.name),
@@ -254,8 +255,8 @@ fn daily(conn: &Connection) -> Result<Vec<DailyCount>, StoreError> {
             UNION ALL SELECT date(d, '+1 day') FROM days WHERE d < date('now', 'localtime')
          )
          SELECT d,
-                (SELECT COUNT(*) FROM tasks WHERE date(created_at, 'localtime') = d),
-                (SELECT COUNT(*) FROM tasks
+                (SELECT COUNT(*) FROM visible_tasks WHERE date(created_at, 'localtime') = d),
+                (SELECT COUNT(*) FROM visible_tasks
                   WHERE status = 'done' AND date(completed_at, 'localtime') = d)
          FROM days ORDER BY d",
     )?;

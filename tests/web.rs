@@ -436,10 +436,29 @@ async fn organizes_tasks_and_records_user_history() {
     let (_, detail) = app.send("GET", &path, None).await;
     assert_eq!(detail["history"][0]["actor"], "user");
     assert_eq!(detail["history"][0]["message"], "Memo");
-    let (status, deleted) = app.send("DELETE", &path, Some(json!({}))).await;
+    let (status, hidden) = app
+        .send("POST", &format!("{path}/hide"), Some(json!({})))
+        .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(deleted["id"], id);
-    assert!(app.store.get(child_id).unwrap().is_none());
+    assert_eq!(hidden["id"], id);
+    assert!(hidden["hidden_at"].is_string());
+    let child = app
+        .store
+        .get(child_id)
+        .unwrap()
+        .expect("hidden, not deleted");
+    assert!(child.hidden_at.is_some(), "the subtask is hidden too");
+    let (status, shown) = app
+        .send("POST", &format!("{path}/unhide"), Some(json!({})))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(shown["hidden_at"].is_null());
+    let (status, _) = app.send("DELETE", &path, Some(json!({}))).await;
+    assert_eq!(
+        status,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "tasks cannot be deleted"
+    );
 }
 
 #[tokio::test]
@@ -456,7 +475,8 @@ async fn validates_writes_and_missing_tasks() {
     }
     for (method, path, body) in [
         ("PATCH", "/api/tasks/999", json!({"status":"done"})),
-        ("DELETE", "/api/tasks/999", json!({})),
+        ("POST", "/api/tasks/999/hide", json!({})),
+        ("POST", "/api/tasks/999/unhide", json!({})),
         ("POST", "/api/tasks/999/subtasks", json!({"title":"Child"})),
         ("POST", "/api/tasks/999/notes", json!({"message":"Memo"})),
         (

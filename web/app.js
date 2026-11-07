@@ -91,6 +91,9 @@
     return `<progress class="ui-progress" max="${task.subtasks.total}" value="${task.subtasks.done}" aria-label="子タスクの進捗 ${task.subtasks.done}/${task.subtasks.total}"></progress>`;
   }
 
+  /** Whether the person has not hidden the task (hiding a task hides its subtasks too). */
+  const isShown = (task) => !task.hidden_at;
+
   /** Work in progress with no recent activity; a parent waiting for its subtasks is not stalled. */
   function isStalled(task) {
     return task.status === 'in_progress'
@@ -159,6 +162,7 @@
   /** Deepest indent applied to nested subtask cards. */
   const MAX_INDENT_DEPTH = 2;
   const showSubtasksInput = $('#board-subtasks');
+  const showHiddenInput = $('#board-hidden');
   const subtaskLayout = $('#board-subtask-layout');
   const donePeriod = $('#board-done-period');
   const expandedStacks = new Set();
@@ -217,6 +221,7 @@
       ? `<a class="task-card-parent" href="#task-${parent.id}" title="親タスク: ${escapeHtml(parent.title)}"><span icon="mdi-arrow-up" aria-hidden="true"></span><span class="visually-hidden">親タスク</span>#${parent.id} ${escapeHtml(parent.title)}</a>`
       : '';
     const classes = ['task-card'];
+    if (!isShown(task)) classes.push('is-hidden');
     // Kav-UI's chasing light ring marks only the work an AI agent is doing right now.
     const agentWorking = isAgentWorking(task) || stackWorking;
     if (agentWorking) classes.push('is-running');
@@ -227,6 +232,7 @@
       <h4 class="title"><a href="#task-${task.id}">${escapeHtml(task.title)}</a>${agentWorking ? `<span class="visually-hidden">（${stackWorking ? 'このまとまりのタスクを' : ''}AIが作業中）</span>` : ''}</h4>
       ${source || task.assignee || isStalled(task) ? `<div class="ui-cluster">${source}${task.assignee ? actorBadge(task.assignee) : ''}${isStalled(task) ? '<span class="badge text-bg-warning" title="2時間以上動きがありません">停滞</span>' : ''}</div>` : ''}
       ${task.status === 'review' ? '<span class="badge text-bg-warning">ユーザーの確認待ち</span>' : ''}
+      ${isShown(task) ? '' : '<span class="badge badge-neutral rounded-pill fw-normal border"><span icon="mdi-eye-off" aria-hidden="true"></span>非表示</span>'}
       ${subtaskProgress(task)}
       <div class="task-card-foot">
         <p class="type-caption type-color-muted">${cardMeta(task, { withRepo: false })}</p>
@@ -293,8 +299,10 @@
     const query = searchInput.value.trim().toLowerCase();
     const source = sourceSelect.value;
     const showSubtasks = showSubtasksInput.checked;
+    const showHidden = showHiddenInput.checked;
     return tasks
       .filter((task) => {
+        if (!showHidden && !isShown(task)) return false;
         if (!showSubtasks && task.parent_id !== null) return false;
         // A subtask belongs to the same source as the task at the top of its family.
         const repo = tree.info.get(task.id).root.github?.repo ?? null;
@@ -379,7 +387,8 @@
         }
       });
     }
-    const total = showSubtasksInput.checked ? tasks.length : tasks.filter((t) => t.parent_id === null).length;
+    const counted = showHiddenInput.checked ? tasks : tasks.filter(isShown);
+    const total = showSubtasksInput.checked ? counted.length : counted.filter((t) => t.parent_id === null).length;
     $('#board-summary').textContent = shown.length === total
       ? `${total}件`
       : `${total}件中 ${shown.length}件を表示`;
@@ -505,6 +514,7 @@
   searchInput.addEventListener('input', () => renderBoard({ filter: true }));
   sourceSelect.addEventListener('change', () => renderBoard({ filter: true }));
   showSubtasksInput.addEventListener('change', () => renderBoard({ filter: true }));
+  showHiddenInput.addEventListener('change', () => renderBoard({ filter: true }));
   subtaskLayout.addEventListener('change', () => {
     try { localStorage.setItem('task-tool-subtask-layout', subtaskLayout.value); } catch { /* Storage is optional. */ }
     renderBoard({ filter: true });
@@ -572,12 +582,13 @@
 
   function renderMetrics(stats) {
     stallAfterMs = stats.stall_after_secs * 1000;
-    const working = tasks.filter(isAgentWorking);
-    const personal = tasks.filter((t) => t.status === 'todo' && (!t.assignee || t.assignee === 'user'));
+    const shownTasks = tasks.filter(isShown);
+    const working = shownTasks.filter(isAgentWorking);
+    const personal = shownTasks.filter((t) => t.status === 'todo' && (!t.assignee || t.assignee === 'user'));
     setText('[data-metric="working"]', working.length);
     setText('[data-metric-note="working"]', '会話で依頼したAIの作業');
     setText('[data-metric="personal"]', personal.length);
-    setText('[data-metric="stalled"]', tasks.filter(isStalled).length);
+    setText('[data-metric="stalled"]', shownTasks.filter(isStalled).length);
     setText('[data-metric="today"]', stats.completed_today);
     setText('[data-nav-count="working"]', working.length);
     setText('[data-metric="review"]', stats.by_status.review);
@@ -654,7 +665,7 @@
     renderCharts(stats);
     renderStalled(stats);
     renderAgentSummary(stats);
-    setText('[data-nav-count="open"]', tasks.filter((t) => t.status !== 'done').length);
+    setText('[data-nav-count="open"]', tasks.filter((t) => isShown(t) && t.status !== 'done').length);
     for (const id of STATS_REGIONS) KavUI.init($(id));
     await loadLatestActivity();
   }
@@ -1071,7 +1082,8 @@
       : descendants > 0 ? `子孫タスク ${descendants} 件` : '';
     const github = task.github && /^https:\/\//.test(task.github.url)
       ? `<a href="${escapeHtml(task.github.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(task.github.repo)}#${escapeHtml(task.github.number)}</a>` : '';
-    const parts = [`<span class="family-lead-status"><span class="dot dot-${task.status}" aria-hidden="true"></span>${STATUS_LABELS[task.status]}</span>`, place, github].filter(Boolean);
+    const hidden = isShown(task) ? '' : '<span class="family-lead-status"><span icon="mdi-eye-off" aria-hidden="true"></span>非表示</span>';
+    const parts = [`<span class="family-lead-status"><span class="dot dot-${task.status}" aria-hidden="true"></span>${STATUS_LABELS[task.status]}</span>`, hidden, place, github].filter(Boolean);
     return `<p class="family-lead">${parts.join('<span aria-hidden="true">·</span>')}</p>`;
   }
 
@@ -1278,7 +1290,9 @@
             <div><button class="btn btn-outline-secondary" type="submit">子タスクを追加</button></div>
           </form>
         </details>
-        <details data-details-key="delete-${task.id}"><summary>タスクを削除</summary><div class="task-edit"><p>このタスクとすべての子タスクを削除します。元に戻せません。</p><div><button class="btn btn-outline-danger" type="button" data-action="delete-task">削除を確定</button></div></div></details>
+        <div class="task-visibility">${isShown(task)
+          ? '<button class="btn btn-outline-secondary" type="button" data-action="hide-task" icon="mdi-eye-off">非表示にする</button><p class="type-caption type-color-muted">子タスクも一緒に非表示になります。ボードの「非表示も表示」で見つけて、元に戻せます。</p>'
+          : '<button class="btn btn-outline-secondary" type="button" data-action="unhide-task" icon="mdi-eye">表示に戻す</button><p class="type-caption type-color-muted">子タスクも一緒に表示に戻ります。</p>'}</div>
       </section>
       ${renderHistory(task, data.history, hasFamily(task))}
     </div>`;
@@ -1366,7 +1380,7 @@
     newTaskForm.reset();
     const select = $('#new-parent');
     KavUI.destroy(select.parentElement);
-    select.innerHTML = '<option value="">なし</option>' + tasks.map((t) => `<option value="${t.id}">#${t.id} ${escapeHtml(t.title)}</option>`).join('');
+    select.innerHTML = '<option value="">なし</option>' + tasks.filter(isShown).map((t) => `<option value="${t.id}">#${t.id} ${escapeHtml(t.title)}</option>`).join('');
     KavUI.init(select.parentElement);
     KavUI.show(newTaskDialog, opener);
     $('#new-title').focus();
@@ -1425,15 +1439,18 @@
   });
 
   familyBody.addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-action="delete-task"]');
+    const button = event.target.closest('[data-action="hide-task"], [data-action="unhide-task"]');
     if (!button || button.disabled) return;
+    const hide = button.dataset.action === 'hide-task';
     button.disabled = true;
     try {
-      await api('DELETE', `/api/tasks/${openTaskId}`, {});
-      KavUI.hide(familyDialog);
+      await api('POST', `/api/tasks/${openTaskId}/${hide ? 'hide' : 'unhide'}`, {});
+      // A hidden task leaves the board, so close it unless hidden tasks are being shown.
+      if (hide && !showHiddenInput.checked) KavUI.hide(familyDialog);
       await refresh();
-      notifySuccess('タスクを削除しました', '');
-    } catch (error) { notifyError('削除できませんでした', error); }
+      notifySuccess(hide ? 'タスクを非表示にしました' : 'タスクを表示に戻しました',
+        hide ? 'ボードの「非表示も表示」で確認できます。' : '');
+    } catch (error) { notifyError(hide ? '非表示にできませんでした' : '表示に戻せませんでした', error); }
     finally { if (button.isConnected) button.disabled = false; }
   });
 

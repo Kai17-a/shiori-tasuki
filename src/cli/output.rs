@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 use super::{Command, GhCommand, IgnoreCommand};
 
-const TASK_FIELDS: &str = "id,parent_id,title,description,status,created_by,github,subtasks,created_at,updated_at,completed_at,assignee,last_activity_at,workdir,attempts";
+const TASK_FIELDS: &str = "id,parent_id,title,description,status,created_by,github,subtasks,created_at,updated_at,completed_at,assignee,last_activity_at,workdir,attempts,hidden_at";
 const EVENT_FIELDS: &str =
     "id,task_id,task_title,actor,kind,message,from_status,to_status,created_at";
 
@@ -23,7 +23,6 @@ fn fields(command: &Command) -> &'static str {
         Command::View { .. } => "task,subtasks,history,sessions",
         Command::Note { .. } | Command::Activity { .. } => EVENT_FIELDS,
         Command::Link { .. } => "sessions",
-        Command::Delete { .. } => "deleted",
         Command::Guide => "instructions",
         Command::Stats => {
             "total,by_status,completed_last_7_days,daily,by_repo,by_creator,recent,with_subtasks,completed_today,stalled,agents,stall_after_secs,awaiting_review"
@@ -123,17 +122,6 @@ pub(super) fn print(value: &Value, json: Option<&str>, command: &Command) -> Res
                 .map(|(k, v)| vec![k.clone(), cell(v)])
                 .collect();
             table(&mut out, &rows, layout)?;
-        }
-        Command::Delete { .. } => {
-            if layout == Layout::Aligned {
-                writeln!(
-                    out,
-                    "Deleted task #{} and its descendants",
-                    value["deleted"]["id"]
-                )?;
-            } else {
-                writeln!(out, "{}\tdeleted", value["deleted"]["id"])?;
-            }
         }
         Command::Gh(GhCommand::Ignore(command)) => ignored(&mut out, command, value, layout)?,
         _ => tasks(&mut out, &items(value), layout)?,

@@ -517,8 +517,9 @@ fn cycles_are_rejected_and_missing_imported_parent_is_cleared() {
         store.find_by_github("o/r", 3).unwrap().unwrap().parent_id,
         None
     );
-    store.delete(b.id).unwrap();
-    // A deleted parent's cascade may remove its children; a later sync restores only assigned issues.
+    // When the parent issue drops out of the results, its task no longer counts as one.
+    store.ignore_repo("o/r").unwrap();
+    store.unignore_repo("o/r").unwrap();
     sync(&store, results(&[child(1, Some(2))]));
     assert_eq!(
         store.find_by_github("o/r", 1).unwrap().unwrap().parent_id,

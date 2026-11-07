@@ -12,20 +12,29 @@ use crate::task::{GithubLink, NewSubtask, NewTask, Status, SubtaskSummary, Task,
 pub const MAX_TITLE_CHARS: usize = 200;
 
 /// Schema version stored in `PRAGMA user_version`.
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 /// Current-format SQL timestamp.
 const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')";
 
 /// Migrations indexed by the version they upgrade from; version 0 is an empty file.
-const MIGRATIONS: [&str; 6] = [
+const MIGRATIONS: [&str; 7] = [
     SCHEMA_V1,
     MIGRATE_V1_TO_V2,
     MIGRATE_V2_TO_V3,
     MIGRATE_V3_TO_V4,
     MIGRATE_V4_TO_V5,
     MIGRATE_V5_TO_V6,
+    MIGRATE_V6_TO_V7,
 ];
+
+/// Lets the person hide tasks instead of deleting them. `visible_tasks` is what statistics
+/// count; a view keeps the columns it had when created, so a migration that adds a column
+/// to `tasks` must recreate it.
+const MIGRATE_V6_TO_V7: &str = "
+ALTER TABLE tasks ADD COLUMN hidden_at TEXT;
+CREATE VIEW visible_tasks AS SELECT * FROM tasks WHERE hidden_at IS NULL;
+";
 
 const MIGRATE_V5_TO_V6: &str = "
 ALTER TABLE task_events RENAME TO legacy_task_events;
@@ -124,8 +133,11 @@ CREATE INDEX task_runs_task ON task_runs(task_id, id);
 CREATE INDEX task_runs_outcome ON task_runs(outcome);
 ";
 
-/// Columns read by [`task_from_row`], with the subtask counts computed per row.
-pub(crate) const SELECT: &str = "
+/// Columns read by [`task_from_row`], with the subtask counts computed per row; shared by
+/// [`SELECT`] and [`VISIBLE_SELECT`].
+macro_rules! task_columns {
+    () => {
+        "
 SELECT t.id, t.parent_id, t.title, t.description, t.status, t.created_by,
        t.gh_repo, t.gh_number, t.gh_url, t.created_at, t.updated_at, t.completed_at,
        (SELECT COUNT(*) FROM tasks c WHERE c.parent_id = t.id) AS subtask_total,
@@ -133,8 +145,16 @@ SELECT t.id, t.parent_id, t.title, t.description, t.status, t.created_by,
        t.assignee,
        COALESCE((SELECT MAX(e.created_at) FROM task_events e WHERE e.task_id = t.id), t.updated_at)
            AS last_activity_at,
-       t.workdir, t.attempts
-FROM tasks t";
+       t.workdir, t.attempts, t.hidden_at
+"
+    };
+}
+
+/// Every task, as [`task_from_row`] reads it.
+pub(crate) const SELECT: &str = concat!(task_columns!(), "FROM tasks t");
+
+/// The tasks that are not hidden, for statistics.
+pub(crate) const VISIBLE_SELECT: &str = concat!(task_columns!(), "FROM visible_tasks t");
 
 /// One GitHub issue as written by [`Store::upsert_github_issue`].
 #[derive(Debug)]
@@ -154,6 +174,13 @@ pub(crate) enum Upsert {
     Created,
     Updated,
     Unchanged,
+}
+
+/// Whether a task is shown, for [`Store::hide`] and [`Store::unhide`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Visibility {
+    Hidden,
+    Shown,
 }
 
 /// Which tasks [`Store::list`] returns.
@@ -263,9 +290,11 @@ impl Store {
         tx.execute(
             &format!(
                 "INSERT INTO tasks
-                    (parent_id, title, description, status, created_by, completed_at, workdir)
+                    (parent_id, title, description, status, created_by, completed_at, workdir,
+                     hidden_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, CASE WHEN ?4 = 'done' THEN {NOW} END,
-                    COALESCE(?6, (SELECT workdir FROM tasks WHERE id = ?1)))"
+                    COALESCE(?6, (SELECT workdir FROM tasks WHERE id = ?1)),
+                    (SELECT hidden_at FROM tasks WHERE id = ?1))"
             ),
             params![
                 new.parent_id,
@@ -313,8 +342,9 @@ impl Store {
         let mut ids = Vec::with_capacity(subtasks.len());
         for (subtask, title) in subtasks.iter().zip(titles) {
             tx.execute(
-                "INSERT INTO tasks (parent_id, title, description, created_by, workdir)
-                 VALUES (?1, ?2, ?3, ?4, (SELECT workdir FROM tasks WHERE id = ?1))",
+                "INSERT INTO tasks (parent_id, title, description, created_by, workdir, hidden_at)
+                 VALUES (?1, ?2, ?3, ?4, (SELECT workdir FROM tasks WHERE id = ?1),
+                    (SELECT hidden_at FROM tasks WHERE id = ?1))",
                 params![
                     parent_id,
                     title,
@@ -402,19 +432,52 @@ impl Store {
         fetch(&conn, id)
     }
 
-    /// Deletes a task together with all of its descendants.
+    /// Hides a task and everything under it from the board, lists and statistics, keeping
+    /// all of its history. Subtasks added later under a hidden task start hidden too. The
+    /// GitHub sync never changes this, so a hidden issue stays hidden.
     ///
     /// # Errors
     ///
     /// [`StoreError::NotFound`] for an unknown id.
-    pub fn delete(&self, id: i64) -> Result<(), StoreError> {
-        match self
-            .conn()
-            .execute("DELETE FROM tasks WHERE id = ?1", [id])?
-        {
-            0 => Err(StoreError::NotFound(id)),
-            _ => Ok(()),
+    pub fn hide(&self, id: i64, actor: &Actor) -> Result<Task, StoreError> {
+        self.set_hidden(id, actor, Visibility::Hidden)
+    }
+
+    /// Shows a hidden task and everything under it again.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::NotFound`] for an unknown id.
+    pub fn unhide(&self, id: i64, actor: &Actor) -> Result<Task, StoreError> {
+        self.set_hidden(id, actor, Visibility::Shown)
+    }
+
+    fn set_hidden(&self, id: i64, actor: &Actor, to: Visibility) -> Result<Task, StoreError> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let task = fetch(&tx, id)?;
+        if task.hidden_at.is_some() != (to == Visibility::Hidden) {
+            let value = match to {
+                Visibility::Hidden => NOW,
+                Visibility::Shown => "NULL",
+            };
+            tx.execute(
+                &format!(
+                    "WITH RECURSIVE subtree(id) AS (
+                        SELECT ?1 UNION SELECT t.id FROM tasks t JOIN subtree s ON t.parent_id = s.id
+                     )
+                     UPDATE tasks SET hidden_at = {value} WHERE id IN (SELECT id FROM subtree)"
+                ),
+                [id],
+            )?;
+            let message = match to {
+                Visibility::Hidden => "非表示にした（子タスクを含む）",
+                Visibility::Shown => "表示に戻した（子タスクを含む）",
+            };
+            record(&tx, id, actor, EventKind::Updated, message, None)?;
         }
+        tx.commit()?;
+        fetch(&conn, id)
     }
 
     /// Records that a task mirrors the given GitHub issue.
@@ -797,6 +860,7 @@ pub(crate) fn task_from_row(row: &Row<'_>) -> rusqlite::Result<Task> {
         last_activity_at: row.get(15)?,
         workdir: row.get(16)?,
         attempts: row.get(17)?,
+        hidden_at: row.get(18)?,
         subtasks: SubtaskSummary {
             total: row.get(12)?,
             done: row.get(13)?,

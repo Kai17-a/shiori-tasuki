@@ -283,6 +283,8 @@ impl McpServer {
                     .list(scope)
                     .map_err(|e| e.to_string())?
                     .into_iter()
+                    // Hidden tasks are the person's way of putting work aside.
+                    .filter(|t| t.hidden_at.is_none())
                     .filter(|t| a.status.is_none_or(|s| t.status == s))
                     .filter(|t| assignee.is_none() || t.assignee == assignee)
                     .collect();

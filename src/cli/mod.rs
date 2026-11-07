@@ -91,6 +91,9 @@ pub(crate) enum Command {
         /// Include subtasks at every level.
         #[arg(long, conflicts_with = "parent")]
         all: bool,
+        /// Include hidden tasks.
+        #[arg(long)]
+        hidden: bool,
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
@@ -163,13 +166,10 @@ pub(crate) enum Command {
     /// Record a progress note; message - reads stdin.
     #[command(visible_alias = "comment")]
     Note { id: i64, message: String },
-    /// Delete a task and all descendants; requires --yes, never prompts.
-    #[command(visible_alias = "rm")]
-    Delete {
-        id: i64,
-        #[arg(long)]
-        yes: bool,
-    },
+    /// Hide a task and its subtasks from the board, lists and statistics. Nothing is deleted.
+    Hide { id: i64 },
+    /// Show a hidden task and its subtasks again.
+    Unhide { id: i64 },
     /// Recent history, newest first, optionally for one task.
     Activity {
         #[arg(long, default_value_t = 30)]
@@ -282,6 +282,7 @@ impl Cli {
                 search,
                 parent,
                 all,
+                hidden,
                 limit,
             } => {
                 let filter = ListFilter {
@@ -291,6 +292,7 @@ impl Cli {
                     search: search.as_deref(),
                     parent: *parent,
                     all: *all,
+                    hidden: *hidden,
                     limit: *limit,
                 };
                 serde_json::to_value(self.list(store, &filter)?)?
@@ -399,12 +401,8 @@ impl Cli {
             Command::Note { id, message } => {
                 serde_json::to_value(store.add_note(*id, &actor, &text(message)?)?)?
             }
-            Command::Delete { id, yes } => {
-                if !yes {
-                    bail!("deleting task {id} and its descendants requires --yes");
-                }
-                delete(store, *id)?
-            }
+            Command::Hide { id } => serde_json::to_value(store.hide(*id, &actor)?)?,
+            Command::Unhide { id } => serde_json::to_value(store.unhide(*id, &actor)?)?,
             Command::Gh(GhCommand::Push { id, repository }) => {
                 serde_json::to_value(self.push(store, *id, repository.as_deref())?)?
             }
@@ -431,6 +429,8 @@ struct ListFilter<'a> {
     parent: Option<i64>,
     /// Subtasks too, not only top-level tasks.
     all: bool,
+    /// Hidden tasks too.
+    hidden: bool,
     limit: usize,
 }
 
@@ -457,6 +457,7 @@ impl Cli {
             };
             let repo = repo_of(t);
             scope_matches
+                && (filter.hidden || t.hidden_at.is_none())
                 && (filter.status.is_empty() || filter.status.contains(&t.status))
                 && filter
                     .assignee
@@ -519,13 +520,6 @@ fn ignore(store: &Store, command: &IgnoreCommand) -> Result<Value> {
         }
         IgnoreCommand::List => json!({"ignored_repos": store.ignored_repos()?}),
     })
-}
-
-/// Deletes a task and its descendants, returning what was deleted.
-fn delete(store: &Store, id: i64) -> Result<Value> {
-    let task = get(store, id)?;
-    store.delete(id)?;
-    Ok(json!({"deleted": task}))
 }
 
 /// Creates a task. A top-level task is worked on in the current folder unless `workdir`

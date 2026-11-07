@@ -195,12 +195,18 @@ fn activity_feed_pages_backwards_and_reports_the_latest_id() {
 }
 
 #[test]
-fn deleting_a_task_removes_its_history() {
+fn hiding_a_task_keeps_its_history() {
     let store = store();
     let t = task(&store, "Temp");
     store.add_note(t.id, &Actor::from("user"), "x").unwrap();
-    store.delete(t.id).unwrap();
-    assert!(store.activity(10, None).unwrap().is_empty());
+    store.hide(t.id, &Actor::User).unwrap();
+    let notes: Vec<_> = store
+        .events_for(t.id, 10)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.message)
+        .collect();
+    assert!(notes.contains(&"x".to_owned()), "{notes:?}");
 }
 
 #[test]

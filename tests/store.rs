@@ -176,7 +176,7 @@ fn updates_fields_and_reports_missing_tasks() {
 }
 
 #[test]
-fn deleting_a_parent_deletes_its_subtasks() {
+fn hiding_a_parent_hides_its_subtasks_and_keeps_everything() {
     let store = store();
     let parent = store.create(&new_task("Parent")).unwrap();
     let child = store
@@ -185,13 +185,41 @@ fn deleting_a_parent_deletes_its_subtasks() {
             ..new_task("Child")
         })
         .unwrap();
+    let other = store.create(&new_task("Other")).unwrap();
 
-    store.delete(parent.id).unwrap();
+    let hidden = store.hide(parent.id, &Actor::User).unwrap();
+    assert!(hidden.hidden_at.is_some());
+    let child = store.get(child.id).unwrap().expect("hidden, not deleted");
+    assert!(
+        child.hidden_at.is_some(),
+        "subtasks are hidden with their parent"
+    );
+    assert!(store.get(other.id).unwrap().unwrap().hidden_at.is_none());
 
-    assert!(store.get(child.id).unwrap().is_none());
+    // Statistics leave hidden tasks out; the task list still has them.
+    assert_eq!(store.stats().unwrap().total, 1);
+    assert_eq!(store.list(Scope::All).unwrap().len(), 3);
+
+    // A subtask added under a hidden parent starts hidden.
+    let late = store
+        .create(&NewTask {
+            parent_id: Some(parent.id),
+            ..new_task("Late")
+        })
+        .unwrap();
+    assert!(late.hidden_at.is_some());
+
+    let shown = store.unhide(parent.id, &Actor::User).unwrap();
+    assert!(shown.hidden_at.is_none());
+    assert!(store.get(late.id).unwrap().unwrap().hidden_at.is_none());
+    assert_eq!(store.stats().unwrap().total, 4);
+
+    let events = store.events_for(parent.id, 10).unwrap();
+    assert!(events.iter().any(|e| e.message.starts_with("非表示にした")));
+    assert!(events.iter().any(|e| e.message.starts_with("表示に戻した")));
     assert!(matches!(
-        store.delete(parent.id).unwrap_err(),
-        StoreError::NotFound(_)
+        store.hide(404, &Actor::User).unwrap_err(),
+        StoreError::NotFound(404)
     ));
 }
 
@@ -407,7 +435,7 @@ fn opening_existing_database_preserves_historical_execution_data() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        6
+        7
     );
 }
 

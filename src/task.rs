@@ -91,6 +91,9 @@ pub struct Task {
     pub workdir: Option<String>,
     /// Historical execution count, retained for database compatibility.
     pub attempts: u32,
+    /// When the person hid the task (or an ancestor); hidden tasks stay out of the board,
+    /// lists and statistics until shown again.
+    pub hidden_at: Option<String>,
 }
 
 impl Task {

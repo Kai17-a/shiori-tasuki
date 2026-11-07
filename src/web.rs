@@ -51,10 +51,9 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/config", get(config))
         .route("/api/tasks", get(list_tasks).post(create_task))
-        .route(
-            "/api/tasks/{id}",
-            get(show_task).patch(update_task).delete(delete_task),
-        )
+        .route("/api/tasks/{id}", get(show_task).patch(update_task))
+        .route("/api/tasks/{id}/hide", post(hide_task))
+        .route("/api/tasks/{id}/unhide", post(unhide_task))
         .route("/api/tasks/{id}/subtasks", post(create_subtask))
         .route("/api/tasks/{id}/notes", post(add_note))
         .route("/api/tasks/{id}/review", post(review_task))
@@ -556,14 +555,18 @@ async fn update_task(
     .map(Json)
 }
 
-async fn delete_task(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Task>> {
-    blocking(move || {
-        let task = state.store.get(id)?.ok_or(StoreError::NotFound(id))?;
-        state.store.delete(id)?;
-        Ok::<_, StoreError>(task)
-    })
-    .await
-    .map(Json)
+/// Hides a task and its subtasks; nothing is deleted.
+async fn hide_task(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Task>> {
+    blocking(move || state.store.hide(id, &Actor::User))
+        .await
+        .map(Json)
+}
+
+/// Shows a hidden task and its subtasks again.
+async fn unhide_task(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Task>> {
+    blocking(move || state.store.unhide(id, &Actor::User))
+        .await
+        .map(Json)
 }
 
 #[derive(Debug, Deserialize)]
