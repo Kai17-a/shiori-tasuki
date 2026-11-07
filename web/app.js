@@ -712,6 +712,7 @@
     try {
       tasks = await api('GET', '/api/tasks?scope=all');
       renderSourceOptions();
+      renderRepoOptions();
       renderBoard();
       await loadStats();
       if (currentView === 'activity') await loadActivity();
@@ -849,11 +850,81 @@
 
   async function loadBackground() {
     try {
-      showSavedBackground(await api('GET', '/api/settings'));
+      const view = await api('GET', '/api/settings');
+      showSavedBackground(view);
+      renderIgnoredRepos(view.github.ignored_repos);
     } catch {
       // The theme's own gradient stays as the background.
     }
   }
+
+  // ---- Repositories the GitHub sync skips ----------------------------------
+
+  let ignoredRepos = [];
+  const ignoreForm = $('#ignore-repo-form');
+  const sameRepo = (a, b) => a.toLowerCase() === b.toLowerCase();
+
+  /** Suggests the imported repositories that are not ignored yet. */
+  function renderRepoOptions() {
+    const repos = [...new Set(tasks.filter((t) => t.github).map((t) => t.github.repo))]
+      .filter((repo) => !ignoredRepos.some((r) => sameRepo(r, repo)))
+      .sort((a, b) => a.localeCompare(b));
+    $('#ignore-repo-options').innerHTML = repos.map((repo) => `<option value="${escapeHtml(repo)}"></option>`).join('');
+  }
+
+  function renderIgnoredRepos(repos) {
+    ignoredRepos = repos;
+    replaceRegion($('#ignored-repos'), repos.length
+      ? repos.map((repo) => `<li class="ignored-repo">
+          <code>${escapeHtml(repo)}</code>
+          <button type="button" class="btn btn-sm btn-ghost-secondary" data-unignore="${escapeHtml(repo)}">取り込みを再開</button>
+        </li>`).join('')
+      : '<li class="type-caption type-color-muted">ありません</li>');
+    renderRepoOptions();
+  }
+
+  ignoreForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = $('#ignore-repo');
+    const repo = input.value.trim();
+    if (!input.checkValidity() || !repo) {
+      notifyError('追加できませんでした', new Error('リポジトリは owner/name の形で入力してください。'));
+      return;
+    }
+    const button = ignoreForm.querySelector('[type="submit"]');
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      const preview = await api('GET', `/api/settings/github/ignored?repo=${encodeURIComponent(repo)}`);
+      const warning = preview.tasks > 0
+        ? `\n\n取り込み済みのタスク ${preview.tasks} 件（子タスクを含む）を削除します。メモや AI の作業記録も消え、元に戻せません。`
+        : '';
+      if (!window.confirm(`${repo} の Issue を取り込まないようにします。${warning}`)) return;
+      const result = await api('POST', '/api/settings/github/ignored', { repo });
+      input.value = '';
+      renderIgnoredRepos(result.settings.github.ignored_repos);
+      await refresh();
+      notifySuccess('取り込まないリポジトリに追加しました', result.deleted > 0 ? `タスク ${result.deleted} 件を削除しました。` : '');
+    } catch (err) {
+      notifyError('追加できませんでした', err);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  $('#ignored-repos').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-unignore]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      const view = await api('DELETE', '/api/settings/github/ignored', { repo: button.dataset.unignore });
+      renderIgnoredRepos(view.github.ignored_repos);
+      notifySuccess('取り込みを再開します', '次の同期で取り込みます。');
+    } catch (err) {
+      notifyError('取り込みを再開できませんでした', err);
+      if (button.isConnected) button.disabled = false;
+    }
+  });
 
   backgroundFile.addEventListener('change', () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);

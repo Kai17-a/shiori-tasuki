@@ -73,6 +73,12 @@ pub fn router(state: AppState) -> Router {
                 // One byte over the limit lets the handler report the size precisely.
                 .layer(DefaultBodyLimit::max(MAX_IMAGE_BYTES + 1)),
         )
+        .route(
+            "/api/settings/github/ignored",
+            get(ignored_repo_preview)
+                .post(ignore_repo)
+                .delete(unignore_repo),
+        )
         .fallback(static_file)
         .layer(middleware::from_fn(move |req: Request, next: Next| {
             check_host(hosts, req, next)
@@ -278,6 +284,13 @@ impl From<ImageError> for ApiError {
 #[derive(Debug, Serialize)]
 struct SettingsView {
     background: BackgroundView,
+    github: GithubSettingsView,
+}
+
+#[derive(Debug, Serialize)]
+struct GithubSettingsView {
+    /// Repositories whose issues the sync skips.
+    ignored_repos: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -317,6 +330,9 @@ fn settings_view(store: &Store) -> Result<SettingsView, StoreError> {
         background: BackgroundView {
             settings: store.background_settings()?,
             image: store.background_image_info()?.map(ImageView::from),
+        },
+        github: GithubSettingsView {
+            ignored_repos: store.ignored_repos()?,
         },
     })
 }
@@ -410,6 +426,54 @@ async fn static_file(uri: Uri) -> Response {
         }
         None => (StatusCode::NOT_FOUND, "not found").into_response(),
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct RepoParam {
+    repo: String,
+}
+
+/// How many tasks ignoring a repository would delete, for the confirmation.
+async fn ignored_repo_preview(
+    State(state): State<AppState>,
+    Query(params): Query<RepoParam>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let tasks = blocking(move || state.store.repo_task_count(&params.repo)).await?;
+    Ok(Json(json!({ "tasks": tasks })))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RepoBody {
+    repo: String,
+}
+
+/// Stops importing a repository and deletes the tasks already imported from it.
+async fn ignore_repo(
+    State(state): State<AppState>,
+    body: Result<Json<RepoBody>, JsonRejection>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let Json(body) = body.map_err(|e| bad_json(&e))?;
+    let (deleted, view) = blocking(move || {
+        let deleted = state.store.ignore_repo(&body.repo)?;
+        Ok::<_, StoreError>((deleted, settings_view(&state.store)?))
+    })
+    .await?;
+    Ok(Json(json!({ "deleted": deleted, "settings": view })))
+}
+
+/// Imports a repository again from the next sync.
+async fn unignore_repo(
+    State(state): State<AppState>,
+    body: Result<Json<RepoBody>, JsonRejection>,
+) -> ApiResult<Json<SettingsView>> {
+    let Json(body) = body.map_err(|e| bad_json(&e))?;
+    blocking(move || {
+        state.store.unignore_repo(&body.repo)?;
+        settings_view(&state.store)
+    })
+    .await
+    .map(Json)
 }
 
 #[derive(Debug, Deserialize)]

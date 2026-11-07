@@ -505,3 +505,18 @@ fn agents_cannot_bypass_review_and_thread_id_is_captured() {
     c.json(&["approve", "1", "--comment", "Checked", "--json"]);
     assert_eq!(c.json(&["view", "1", "--json"])["task"]["status"], "done");
 }
+
+#[test]
+fn ignores_and_restores_repositories() {
+    let cli = Cli::new();
+    let added = cli.json(&["gh", "ignore", "add", "o/noise", "--json"]);
+    assert_eq!(added, json!({"repo": "o/noise", "deleted": 0}));
+    let listed = cli.json(&["gh", "ignore", "list", "--json"]);
+    assert_eq!(listed["ignored_repos"], json!(["o/noise"]));
+    let plain = cli.run(&["gh", "ignore", "list"]);
+    assert_eq!(String::from_utf8_lossy(&plain.stdout), "o/noise\n");
+    let removed = cli.json(&["gh", "ignore", "remove", "o/noise", "--json"]);
+    assert_eq!(removed["removed"], true);
+    let bad = cli.run(&["gh", "ignore", "add", "not-a-repo"]);
+    assert!(!bad.status.success(), "a malformed repository is refused");
+}

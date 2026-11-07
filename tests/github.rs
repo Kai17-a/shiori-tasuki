@@ -4,11 +4,18 @@ use std::collections::VecDeque;
 use task_tool::github::{self, GhError, GhRunner, GithubError};
 use task_tool::{Actor, NewSubtask, NewTask, Status, Store, TaskUpdate};
 
-/// Records every `gh` invocation and replies with queued outputs.
+/// Plays `gh` signed in as `me`.
+///
+/// The login lookup always answers `me`. The search of `me`'s own repositories answers
+/// from `own` (no issues once it runs out) and is recorded in `own_calls`. Every other
+/// call, such as the search of issues assigned elsewhere, answers from `replies` in turn
+/// and is recorded in `calls`.
 #[derive(Default)]
 struct FakeGh {
     calls: RefCell<Vec<Vec<String>>>,
     replies: RefCell<VecDeque<Result<String, GhError>>>,
+    own_calls: RefCell<Vec<Vec<String>>>,
+    own: RefCell<VecDeque<String>>,
 }
 
 impl FakeGh {
@@ -22,6 +29,17 @@ impl FakeGh {
 
 impl GhRunner for FakeGh {
     fn run(&self, args: &[String]) -> Result<String, GhError> {
+        if args == ["api", "user", "--jq", ".login"] {
+            return Ok("me\n".into());
+        }
+        if args.iter().any(|a| a.starts_with("q=user:me ")) {
+            self.own_calls.borrow_mut().push(args.to_vec());
+            return Ok(self
+                .own
+                .borrow_mut()
+                .pop_front()
+                .unwrap_or_else(|| results(&[])));
+        }
         self.calls.borrow_mut().push(args.to_vec());
         self.replies
             .borrow_mut()
@@ -47,7 +65,7 @@ fn results(items: &[String]) -> String {
 }
 
 fn sync(store: &Store, reply: String) -> github::ImportReport {
-    github::sync_assigned(store, &FakeGh::replying([reply])).expect("sync succeeds")
+    github::sync_issues(store, &FakeGh::replying([reply])).expect("sync succeeds")
 }
 
 #[test]
@@ -58,7 +76,7 @@ fn fetches_every_issue_assigned_to_me_across_repositories() {
         issue("other/web", 7, "Closed one", "closed"),
     ])]);
 
-    let report = github::sync_assigned(&store, &gh).unwrap();
+    let report = github::sync_issues(&store, &gh).unwrap();
 
     assert_eq!((report.created, report.updated), (2, 0));
     assert_eq!(&gh.calls.borrow()[0][..2], ["api", "graphql"]);
@@ -303,7 +321,7 @@ fn reports_gh_failures() {
         ..FakeGh::default()
     };
 
-    let err = github::sync_assigned(&store, &gh).unwrap_err();
+    let err = github::sync_issues(&store, &gh).unwrap_err();
 
     assert!(err.to_string().contains("HTTP 401"), "got {err}");
 }
@@ -416,7 +434,7 @@ fn pagination_uses_cursor_and_ignores_non_issues() {
             r#"{"__typename":"PullRequest"}"#.into(),
         ]),
     ]);
-    github::sync_assigned(&store, &gh).unwrap();
+    github::sync_issues(&store, &gh).unwrap();
     assert!(gh.calls.borrow()[1].iter().any(|a| a == "cursor=next"));
     assert_eq!(
         store.find_by_github("o/r", 2).unwrap().unwrap().parent_id,
@@ -524,13 +542,12 @@ fn caps_search_at_one_thousand_and_validates_parent_repository() {
         )
     });
     let gh = FakeGh::replying(pages);
-    assert_eq!(github::sync_assigned(&store, &gh).unwrap().created, 1000);
+    assert_eq!(github::sync_issues(&store, &gh).unwrap().created, 1000);
     assert_eq!(gh.calls.borrow().len(), 10);
     let mut invalid: serde_json::Value = serde_json::from_str(&child(1001, Some(1))).unwrap();
     invalid["parent"]["repository"]["nameWithOwner"] = "--bad/repo".into();
     assert!(
-        github::sync_assigned(&store, &FakeGh::replying([results(&[invalid.to_string()])]))
-            .is_err()
+        github::sync_issues(&store, &FakeGh::replying([results(&[invalid.to_string()])])).is_err()
     );
 }
 
@@ -549,4 +566,107 @@ fn reversing_existing_hierarchy_is_independent_of_result_order() {
         assert_eq!(a.parent_id, Some(b.id));
         assert_eq!(b.parent_id, None);
     }
+}
+
+#[test]
+fn imports_every_issue_of_my_own_repositories_and_only_my_share_elsewhere() {
+    let store = Store::open_in_memory().unwrap();
+    let gh = FakeGh::replying([results(&[
+        issue("org/team", 5, "Assigned to me", "open"),
+        // Also found by the own-repository search; imported once.
+        issue("me/tool", 1, "Unassigned idea", "open"),
+    ])]);
+    gh.own.borrow_mut().push_back(results(&[
+        issue("me/tool", 1, "Unassigned idea", "open"),
+        issue("me/site", 2, "Old fix", "closed"),
+    ]));
+
+    let report = github::sync_issues(&store, &gh).unwrap();
+
+    assert_eq!((report.created, report.updated), (3, 0));
+    let own = &gh.own_calls.borrow()[0];
+    assert!(
+        own.iter()
+            .any(|a| a == "q=user:me is:issue archived:false sort:updated-desc"),
+        "{own:?}"
+    );
+    let elsewhere = &gh.calls.borrow()[0];
+    assert!(
+        elsewhere
+            .iter()
+            .any(|a| a == "q=assignee:@me is:issue -user:me sort:updated-desc"),
+        "{elsewhere:?}"
+    );
+    assert!(store.find_by_github("me/tool", 1).unwrap().is_some());
+    assert_eq!(
+        store.find_by_github("me/site", 2).unwrap().unwrap().status,
+        Status::Done
+    );
+    assert!(store.find_by_github("org/team", 5).unwrap().is_some());
+}
+
+#[test]
+fn refuses_a_login_that_could_change_the_search() {
+    struct OddLogin;
+    impl GhRunner for OddLogin {
+        fn run(&self, _: &[String]) -> Result<String, GhError> {
+            Ok("me is:pr".into())
+        }
+    }
+    let store = Store::open_in_memory().unwrap();
+    let err = github::sync_issues(&store, &OddLogin).unwrap_err();
+    assert!(err.to_string().contains("unexpected GitHub login"), "{err}");
+}
+
+#[test]
+fn ignoring_a_repository_deletes_its_tasks_and_skips_it_from_then_on() {
+    let store = Store::open_in_memory().unwrap();
+    sync(
+        &store,
+        results(&[
+            issue("o/noise", 1, "Not mine to track", "open"),
+            issue("o/keep", 2, "Mine", "open"),
+        ]),
+    );
+    let noisy = store.find_by_github("o/noise", 1).unwrap().unwrap();
+    store
+        .create_subtasks(
+            noisy.id,
+            &[NewSubtask {
+                title: "Local step".into(),
+                description: String::new(),
+            }],
+            &Actor::User,
+        )
+        .unwrap();
+
+    // GitHub compares repository names without case, and so does the ignore list.
+    assert_eq!(store.repo_task_count("O/Noise").unwrap(), 2);
+    assert_eq!(store.ignore_repo("O/Noise").unwrap(), 2);
+    assert!(store.find_by_github("o/noise", 1).unwrap().is_none());
+    assert!(store.find_by_github("o/keep", 2).unwrap().is_some());
+    assert_eq!(store.ignored_repos().unwrap(), ["O/Noise"]);
+    assert_eq!(store.ignore_repo("o/noise").unwrap(), 0, "already ignored");
+    assert_eq!(
+        store.ignored_repos().unwrap().len(),
+        1,
+        "no duplicate entry"
+    );
+
+    let report = sync(
+        &store,
+        results(&[
+            issue("o/noise", 1, "Not mine to track", "open"),
+            issue("o/noise", 3, "New noise", "open"),
+        ]),
+    );
+    assert_eq!(report.created, 0, "ignored issues are not imported");
+    assert!(store.find_by_github("o/noise", 3).unwrap().is_none());
+
+    assert!(store.unignore_repo("o/noise").unwrap());
+    assert!(!store.unignore_repo("o/noise").unwrap(), "already imported");
+    sync(&store, results(&[issue("o/noise", 3, "New noise", "open")]));
+    assert!(store.find_by_github("o/noise", 3).unwrap().is_some());
+
+    assert!(store.ignore_repo("not a repo").is_err());
 }

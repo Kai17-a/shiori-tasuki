@@ -3,7 +3,7 @@ use std::io::{self, IsTerminal, Write};
 use anyhow::{Result, bail};
 use serde_json::{Map, Value};
 
-use super::Command;
+use super::{Command, GhCommand, IgnoreCommand};
 
 const TASK_FIELDS: &str = "id,parent_id,title,description,status,created_by,github,subtasks,created_at,updated_at,completed_at,assignee,last_activity_at,workdir,attempts";
 const EVENT_FIELDS: &str =
@@ -29,6 +29,9 @@ fn fields(command: &Command) -> &'static str {
             "total,by_status,completed_last_7_days,daily,by_repo,by_creator,recent,with_subtasks,completed_today,stalled,agents,stall_after_secs,awaiting_review"
         }
         Command::Serve { .. } | Command::Mcp => "",
+        Command::Gh(GhCommand::Ignore(IgnoreCommand::Add { .. })) => "repo,deleted",
+        Command::Gh(GhCommand::Ignore(IgnoreCommand::Remove { .. })) => "repo,removed",
+        Command::Gh(GhCommand::Ignore(IgnoreCommand::List)) => "ignored_repos",
         _ => TASK_FIELDS,
     }
 }
@@ -132,7 +135,47 @@ pub(super) fn print(value: &Value, json: Option<&str>, command: &Command) -> Res
                 writeln!(out, "{}\tdeleted", value["deleted"]["id"])?;
             }
         }
+        Command::Gh(GhCommand::Ignore(command)) => ignored(&mut out, command, value, layout)?,
         _ => tasks(&mut out, &items(value), layout)?,
+    }
+    Ok(())
+}
+
+/// Plain-text result of `gh ignore add`, `remove` and `list`.
+fn ignored(
+    out: &mut impl Write,
+    command: &IgnoreCommand,
+    value: &Value,
+    layout: Layout,
+) -> Result<()> {
+    match command {
+        IgnoreCommand::Add { .. } if layout == Layout::Aligned => writeln!(
+            out,
+            "Ignoring {}; deleted {} imported tasks",
+            cell(&value["repo"]),
+            value["deleted"]
+        )?,
+        IgnoreCommand::Add { .. } => {
+            writeln!(
+                out,
+                "{}\tignored\t{}",
+                cell(&value["repo"]),
+                value["deleted"]
+            )?;
+        }
+        IgnoreCommand::Remove { .. } => {
+            let state = if value["removed"] == true {
+                "imported again"
+            } else {
+                "was not ignored"
+            };
+            writeln!(out, "{}\t{state}", cell(&value["repo"]))?;
+        }
+        IgnoreCommand::List => {
+            for repo in items(&value["ignored_repos"]) {
+                writeln!(out, "{}", cell(repo))?;
+            }
+        }
     }
     Ok(())
 }

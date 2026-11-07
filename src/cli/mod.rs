@@ -199,6 +199,28 @@ pub(crate) enum GhCommand {
         #[arg(value_name = "REPO")]
         repository: Option<String>,
     },
+    /// Repositories whose issues are not imported by the sync.
+    #[command(subcommand)]
+    Ignore(IgnoreCommand),
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum IgnoreCommand {
+    /// Stop importing a repository and delete the tasks already imported from it.
+    Add {
+        /// owner/name.
+        repo: String,
+        /// Confirm deleting the repository's imported tasks and their subtasks.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Import a repository again from the next sync.
+    Remove {
+        /// owner/name.
+        repo: String,
+    },
+    /// Show the ignored repositories.
+    List,
 }
 
 impl Cli {
@@ -286,6 +308,9 @@ impl Cli {
                 None => store.activity(*limit, None)?,
             })?,
             Command::Stats => serde_json::to_value(store.stats()?)?,
+            Command::Gh(GhCommand::Ignore(IgnoreCommand::List)) => {
+                json!({"ignored_repos": store.ignored_repos()?})
+            }
             _ => return Ok(None),
         };
         Ok(Some(value))
@@ -383,6 +408,7 @@ impl Cli {
             Command::Gh(GhCommand::Push { id, repository }) => {
                 serde_json::to_value(self.push(store, *id, repository.as_deref())?)?
             }
+            Command::Gh(GhCommand::Ignore(command)) => ignore(store, command)?,
             Command::List { .. }
             | Command::View { .. }
             | Command::Activity { .. }
@@ -474,6 +500,25 @@ fn review(
         decision,
         &text(comment)?,
     )?)?)
+}
+
+/// Adds a repository to the ignore list (deleting its imported tasks) or takes it off.
+fn ignore(store: &Store, command: &IgnoreCommand) -> Result<Value> {
+    Ok(match command {
+        IgnoreCommand::Add { repo, yes } => {
+            let tasks = store.repo_task_count(repo)?;
+            if tasks > 0 && !yes {
+                bail!(
+                    "ignoring {repo} deletes its {tasks} imported tasks and their subtasks; pass --yes"
+                );
+            }
+            json!({"repo": repo, "deleted": store.ignore_repo(repo)?})
+        }
+        IgnoreCommand::Remove { repo } => {
+            json!({"repo": repo, "removed": store.unignore_repo(repo)?})
+        }
+        IgnoreCommand::List => json!({"ignored_repos": store.ignored_repos()?}),
+    })
 }
 
 /// Deletes a task and its descendants, returning what was deleted.

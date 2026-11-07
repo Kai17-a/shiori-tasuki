@@ -1,4 +1,4 @@
-//! Keeps GitHub issues assigned to the user mirrored in the background.
+//! Keeps the user's GitHub issues mirrored in the background.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -26,7 +26,7 @@ pub struct SyncStatus {
     pub interval_secs: u64,
 }
 
-/// Runs [`github::sync_assigned`] and remembers how it went; cheap to clone.
+/// Runs [`github::sync_issues`] and remembers how it went; cheap to clone.
 #[derive(Clone)]
 pub struct Syncer {
     store: Store,
@@ -77,7 +77,7 @@ impl Syncer {
         }
         // Clears `running` even if the sync panics, so later runs are not skipped forever.
         let _running = RunningGuard(self);
-        let result = github::sync_assigned(&self.store, self.gh.as_ref());
+        let result = github::sync_issues(&self.store, self.gh.as_ref());
         let now = unix_now();
         let mut status = self.lock();
         status.last_finished_at = Some(now);

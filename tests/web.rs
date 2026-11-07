@@ -17,8 +17,23 @@ struct FakeGh {
     reply: Mutex<Option<String>>,
 }
 
+/// What `gh` answers for the login lookup and the (empty) search of the user's own
+/// repositories; the queued reply goes to the search of issues assigned elsewhere.
+fn fixed_reply(args: &[String]) -> Option<String> {
+    if args == ["api", "user", "--jq", ".login"] {
+        return Some("me".into());
+    }
+    args.iter().any(|a| a.starts_with("q=user:me ")).then(|| {
+        r#"{"data":{"search":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#
+            .into()
+    })
+}
+
 impl GhRunner for FakeGh {
     fn run(&self, args: &[String]) -> Result<String, GhError> {
+        if let Some(reply) = fixed_reply(args) {
+            return Ok(reply);
+        }
         self.calls.lock().expect("fake gh lock").push(args.to_vec());
         self.reply
             .lock()
@@ -682,4 +697,48 @@ fn a_panicking_sync_does_not_block_later_runs() {
         "the fake gh panics"
     );
     assert!(!sync.status().running, "a later run must not be skipped");
+}
+
+#[tokio::test]
+async fn settings_ignore_and_restore_a_repository() {
+    let app = app();
+    let (_, settings) = app.send("GET", "/api/settings", None).await;
+    assert_eq!(settings["github"]["ignored_repos"], json!([]));
+
+    let (status, preview) = app
+        .send("GET", "/api/settings/github/ignored?repo=x/y", None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(preview["tasks"], 0);
+
+    let (status, added) = app
+        .send(
+            "POST",
+            "/api/settings/github/ignored",
+            Some(json!({"repo": "x/y"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{added}");
+    assert_eq!(added["deleted"], 0);
+    assert_eq!(added["settings"]["github"]["ignored_repos"], json!(["x/y"]));
+
+    let (status, error) = app
+        .send(
+            "POST",
+            "/api/settings/github/ignored",
+            Some(json!({"repo": "--bad"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error["error"].is_string(), "{error}");
+
+    let (status, restored) = app
+        .send(
+            "DELETE",
+            "/api/settings/github/ignored",
+            Some(json!({"repo": "x/y"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(restored["github"]["ignored_repos"], json!([]));
 }

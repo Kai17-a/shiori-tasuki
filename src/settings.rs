@@ -1,4 +1,5 @@
-//! Dashboard settings: the glass theme's background image and how it is drawn.
+//! Dashboard settings: the glass theme's background image and how it is drawn, and the
+//! GitHub repositories whose issues are not imported.
 
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -253,4 +254,114 @@ impl Store {
             .execute("DELETE FROM images WHERE name = ?1", [BACKGROUND_IMAGE])?;
         Ok(removed > 0)
     }
+}
+
+/// Settings row holding the repositories whose issues are not imported, as a JSON array.
+const IGNORED_REPOS_KEY: &str = "github_ignored_repos";
+
+/// Tasks imported from a repository (compared without case, as GitHub does) and all
+/// their descendants, including local subtasks added under them.
+const REPO_TASKS: &str = "WITH RECURSIVE doomed(id) AS (
+    SELECT id FROM tasks WHERE gh_repo = ?1 COLLATE NOCASE
+    UNION SELECT t.id FROM tasks t JOIN doomed d ON t.parent_id = d.id
+)";
+
+/// Accepts only `owner/name`, as the GitHub sync stores repositories.
+fn checked_repo(repo: &str) -> Result<&str, StoreError> {
+    let repo = repo.trim();
+    crate::github::validate_repo(repo).map_err(|e| StoreError::Invalid(e.to_string()))?;
+    Ok(repo)
+}
+
+impl Store {
+    /// Repositories whose issues the GitHub sync skips, in the order they were added.
+    ///
+    /// # Errors
+    ///
+    /// Fails only on database errors.
+    pub fn ignored_repos(&self) -> Result<Vec<String>, StoreError> {
+        let value: Option<String> = self
+            .conn()
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                [IGNORED_REPOS_KEY],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(value
+            .and_then(|v| serde_json::from_str(&v).ok())
+            .unwrap_or_default())
+    }
+
+    /// How many tasks [`Store::ignore_repo`] would delete for `repo`: the tasks imported
+    /// from it and everything under them.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::Invalid`] unless `repo` looks like `owner/name`.
+    pub fn repo_task_count(&self, repo: &str) -> Result<u32, StoreError> {
+        let repo = checked_repo(repo)?;
+        Ok(self.conn().query_row(
+            &format!("{REPO_TASKS} SELECT COUNT(*) FROM doomed"),
+            [repo],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Stops importing `repo` and deletes the tasks already imported from it, with
+    /// their subtasks, in one transaction. Returns how many tasks were deleted; ignoring
+    /// a repository again deletes nothing more.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::Invalid`] unless `repo` looks like `owner/name`.
+    pub fn ignore_repo(&self, repo: &str) -> Result<u32, StoreError> {
+        let repo = checked_repo(repo)?;
+        let mut repos = self.ignored_repos()?;
+        if !repos.iter().any(|r| r.eq_ignore_ascii_case(repo)) {
+            repos.push(repo.to_owned());
+        }
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let deleted: u32 = tx.query_row(
+            &format!("{REPO_TASKS} SELECT COUNT(*) FROM doomed"),
+            [repo],
+            |r| r.get(0),
+        )?;
+        // Subtasks go with their parents through ON DELETE CASCADE.
+        tx.execute(
+            "DELETE FROM tasks WHERE gh_repo = ?1 COLLATE NOCASE",
+            [repo],
+        )?;
+        save_ignored(&tx, &repos)?;
+        tx.commit()?;
+        Ok(deleted)
+    }
+
+    /// Imports `repo` again from the next sync. Returns whether it was ignored.
+    ///
+    /// # Errors
+    ///
+    /// [`StoreError::Invalid`] unless `repo` looks like `owner/name`.
+    pub fn unignore_repo(&self, repo: &str) -> Result<bool, StoreError> {
+        let repo = checked_repo(repo)?;
+        let mut repos = self.ignored_repos()?;
+        let before = repos.len();
+        repos.retain(|r| !r.eq_ignore_ascii_case(repo));
+        if repos.len() == before {
+            return Ok(false);
+        }
+        save_ignored(&self.conn(), &repos)?;
+        Ok(true)
+    }
+}
+
+fn save_ignored(conn: &rusqlite::Connection, repos: &[String]) -> Result<(), StoreError> {
+    let json = serde_json::to_string(repos).map_err(|e| StoreError::Invalid(e.to_string()))?;
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params![IGNORED_REPOS_KEY, json],
+    )?;
+    Ok(())
 }

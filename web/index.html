@@ -212,9 +212,22 @@
               <span class="badge badge-neutral fx-shrink-0" id="sync-badge">同期を確認中</span>
             </div>
             <div class="ui-card-body ui-stack">
-              <p class="type-caption type-color-muted sp-m-0">自分に割り当てられたIssueを、全リポジトリから5分ごとに自動で取り込みます。</p>
+              <p class="type-caption type-color-muted sp-m-0">自分のアカウントのリポジトリは全Issueを、それ以外は自分が担当のIssueを、5分ごとに自動で取り込みます。</p>
               <p class="type-caption sp-m-0" id="sync-detail" role="status"></p>
               <div class="alert alert-warning" id="sync-error" hidden><p class="sp-m-0">GitHubと同期できませんでした。gh コマンドのログイン状態を確認してください。<span class="type-caption" data-sync-error></span></p></div>
+              <section class="ui-stack ignored-repos" aria-labelledby="ignored-repos-title">
+                <h3 class="ignored-repos-title" id="ignored-repos-title">取り込まないリポジトリ</h3>
+                <p class="type-caption type-color-muted sp-m-0">ここにあるリポジトリの Issue は取り込みません。追加すると、そのリポジトリから取り込み済みのタスク（子タスクを含む）を削除します。外すと、次の同期で取り込み直します。</p>
+                <ul class="ignored-repo-list" id="ignored-repos" role="list"></ul>
+                <form class="ignore-repo-form" id="ignore-repo-form" novalidate>
+                  <div class="field">
+                    <label for="ignore-repo">リポジトリ（owner/name）</label>
+                    <input class="form-control" id="ignore-repo" name="repo" list="ignore-repo-options" autocomplete="off" spellcheck="false" placeholder="Kai17-a/example" required pattern="[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+">
+                    <datalist id="ignore-repo-options"></datalist>
+                  </div>
+                  <div><button class="btn btn-outline-danger" type="submit">取り込まないリポジトリに追加</button></div>
+                </form>
+              </section>
             </div>
           </section>
           <section class="fx-col-12 ui-card" id="agent-guide" tabindex="-1" aria-labelledby="mcp-title">

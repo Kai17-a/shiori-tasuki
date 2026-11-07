@@ -11,7 +11,15 @@ struct FakeGh {
 }
 
 impl GhRunner for FakeGh {
-    fn run(&self, _: &[String]) -> Result<String, GhError> {
+    fn run(&self, args: &[String]) -> Result<String, GhError> {
+        // Signed in as `me`, whose own repositories have no issues; the queued results
+        // answer the search of issues assigned elsewhere.
+        if args == ["api", "user", "--jq", ".login"] {
+            return Ok("me".into());
+        }
+        if args.iter().any(|a| a.starts_with("q=user:me ")) {
+            return Ok(r#"{"data":{"search":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#.into());
+        }
         self.replies.lock().expect("fake gh lock").remove(0)
     }
 }

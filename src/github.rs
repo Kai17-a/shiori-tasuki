@@ -12,15 +12,15 @@ use crate::task::{GithubLink, Status, Task};
 /// The most results GitHub's search API returns for one query.
 const SEARCH_LIMIT: usize = 1000;
 
-const ISSUE_QUERY: &str = r#"query($cursor: String) {
-  search(query: "assignee:@me is:issue sort:updated-desc", type: ISSUE, first: 100, after: $cursor) {
+const ISSUE_QUERY: &str = r"query($q: String!, $cursor: String) {
+  search(query: $q, type: ISSUE, first: 100, after: $cursor) {
     nodes { __typename ... on Issue {
       number title body state url repository { nameWithOwner } createdAt closedAt
       parent { number repository { nameWithOwner } }
     } }
     pageInfo { hasNextPage endCursor }
   }
-}"#;
+}";
 
 #[derive(Debug, Deserialize)]
 struct Response {
@@ -92,7 +92,7 @@ impl GhRunner for GhCli {
     }
 }
 
-/// Counts of tasks changed by [`sync_assigned`]; unchanged issues are not counted.
+/// Counts of tasks changed by [`sync_issues`]; unchanged issues are not counted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct ImportReport {
     pub created: u32,
@@ -133,20 +133,50 @@ impl Issue {
     }
 }
 
-/// Mirrors every issue assigned to the signed-in `gh` user, open or closed, across all
-/// repositories, preserving parent relations between imported issues. Pull requests are not included.
+/// Mirrors the signed-in `gh` user's issues, open or closed, preserving parent relations
+/// between imported issues. Pull requests are not included.
 ///
-/// Issues are fetched newest activity first, up to the 1000 results GitHub search
-/// returns. Existing local progress is retained unless the issue closes or reopens.
+/// Two searches decide what is the user's:
+/// - every issue in repositories the account owns, except archived ones, since personal
+///   repositories are the user's own work whether or not anyone is assigned;
+/// - issues assigned to the user everywhere else (organizations), where only the user's
+///   share of the team's work is a task.
+///
+/// Repositories the user chose to ignore ([`Store::ignore_repo`]) are skipped. Each
+/// search returns its newest activity first, up to the 1000 results GitHub search
+/// allows. Existing local progress is retained unless the issue closes or reopens, and
+/// tasks whose issue no longer matches are kept.
 ///
 /// # Errors
 ///
 /// Fails when `gh` fails, its output is unexpected, or on storage errors.
-pub fn sync_assigned(
+pub fn sync_issues(
     store: &Store,
     gh: &(impl GhRunner + ?Sized),
 ) -> Result<ImportReport, GithubError> {
-    let issues = fetch_assigned(gh)?;
+    let login = signed_in_login(gh)?;
+    let mut issues = fetch_issues(
+        gh,
+        &format!("user:{login} is:issue archived:false sort:updated-desc"),
+    )?;
+    let mut seen: HashSet<(String, u32)> = issues
+        .iter()
+        .map(|i| (i.repository.name_with_owner.clone(), i.number))
+        .collect();
+    for issue in fetch_issues(
+        gh,
+        &format!("assignee:@me is:issue -user:{login} sort:updated-desc"),
+    )? {
+        if seen.insert((issue.repository.name_with_owner.clone(), issue.number)) {
+            issues.push(issue);
+        }
+    }
+    let ignored = store.ignored_repos()?;
+    issues.retain(|issue| {
+        !ignored
+            .iter()
+            .any(|r| r.eq_ignore_ascii_case(&issue.repository.name_with_owner))
+    });
     let mut report = ImportReport::default();
     let mut outcomes = HashMap::new();
     for issue in &issues {
@@ -177,9 +207,25 @@ pub fn sync_assigned(
     Ok(report)
 }
 
-/// Every issue assigned to the signed-in user, newest activity first, up to
+/// The login of the account `gh` is signed in as, checked so it can go into a search.
+fn signed_in_login(gh: &(impl GhRunner + ?Sized)) -> Result<String, GithubError> {
+    let args = ["api", "user", "--jq", ".login"].map(str::to_owned);
+    let login = gh.run(&args)?.trim().to_owned();
+    let valid = !login.is_empty()
+        && !login.starts_with('-')
+        && login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    if valid {
+        Ok(login)
+    } else {
+        Err(GithubError::Output(format!(
+            "unexpected GitHub login {login:?}"
+        )))
+    }
+}
+
+/// Issues matching the GitHub search `query`, newest activity first, up to
 /// [`SEARCH_LIMIT`]; repositories are validated before anything is stored.
-fn fetch_assigned(gh: &(impl GhRunner + ?Sized)) -> Result<Vec<Issue>, GithubError> {
+fn fetch_issues(gh: &(impl GhRunner + ?Sized), query: &str) -> Result<Vec<Issue>, GithubError> {
     let mut issues = Vec::new();
     let mut cursor = None;
     let mut seen_cursors = HashSet::new();
@@ -189,6 +235,8 @@ fn fetch_assigned(gh: &(impl GhRunner + ?Sized)) -> Result<Vec<Issue>, GithubErr
             "graphql".into(),
             "-f".into(),
             format!("query={ISSUE_QUERY}"),
+            "-f".into(),
+            format!("q={query}"),
         ];
         if let Some(cursor) = &cursor {
             args.extend(["-f".into(), format!("cursor={cursor}")]);
