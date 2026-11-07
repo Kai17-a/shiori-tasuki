@@ -22,18 +22,19 @@ body.ui-app > .app-shell {
 }
 
 /* Every page heading is the same Kav-UI panel (.ui-page-header-panel). On tablets and up it
-   stays at the top while the page scrolls. Board and activity also pin their filter bar right
-   under it, and the two read as one panel: the heading is its top half (no bottom border, square
-   bottom corners, no shadow on the bar) and the bar its bottom half, with no gap for cards to
-   show through. Phones keep the bar in the flow, where the wrapped bar would cover most of the
-   screen. */
+   stays at the top while the page scrolls. Activity also pins its filter bar right under it,
+   and the two read as one panel: the heading is its top half (no bottom border, square bottom
+   corners, no shadow on the bar) and the bar its bottom half, with no gap for entries to show
+   through. The board's search bar is a panel of its own below the tabs; the board does not
+   scroll the page, so nothing shows through the gap. Phones keep the bar in the flow, where
+   the wrapped bar would cover most of the screen. */
 @media (width >= 768px) {
   .app-content .ui-page-header {
     position: sticky;
     top: 0;
     z-index: 20;
   }
-  .app-content:is([data-current-view="board"], [data-current-view="activity"]) .ui-page-header {
+  .app-content[data-current-view="activity"] .ui-page-header {
     /* Cancel the page stack's gap so the bar joins the heading. */
     margin-block-end: calc(-1 * var(--space-4));
     padding-block-end: var(--space-3);
@@ -42,7 +43,7 @@ body.ui-app > .app-shell {
     border-end-end-radius: 0;
     box-shadow: inset 0 1px 0 var(--ui-glass-highlight, transparent);
   }
-  .app-content:is([data-current-view="board"], [data-current-view="activity"]) [data-view] > .ui-toolbar {
+  .app-content[data-current-view="activity"] [data-view] > .ui-toolbar {
     position: sticky;
     top: var(--page-header-h, 0px);
     z-index: 19;
@@ -614,7 +615,8 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
     min-height: 0;
   }
   [data-view="board"] > .ui-board-wrap {
-    height: calc(100dvh - var(--page-header-h) - var(--board-toolbar-h) - 4 * var(--space-4));
+    /* Page padding, plus the gaps above and below the search bar. */
+    height: calc(100dvh - var(--page-header-h) - var(--board-toolbar-h) - 5 * var(--space-4));
     min-height: 0;
     overflow-x: auto;
     overflow-y: hidden;
