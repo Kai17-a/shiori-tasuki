@@ -1,0 +1,4 @@
+interface:
+  display_name: "shiori-tasuki のタスク実行"
+  short_description: "shiori-tasuki のタスクを読み、必要なら子タスクに分けて実行し、確認待ちとして報告"
+  default_prompt: "$shiori-tasuki を使い、shiori-tasuki のタスク #ID を読んで、必要なら子タスクに分けてから進め、確認待ちとして報告してください。"

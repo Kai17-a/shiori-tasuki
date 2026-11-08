@@ -56,6 +56,14 @@ Git リポジトリで作業した場合は、ブランチ、コミット、変�
 
 Codex など、MCP を使わずに CLI で操作する AI には、`stk guide` で同じ手順を示せる。Codex は `--as codex` を付けて実行する。
 
+AI に作業の進め方を教える agent skill も、このリポジトリの `skills/shiori-tasuki/` にある。[GitHub CLI](https://cli.github.com/) で入れる。
+
+```sh
+gh skill install Kai17-a/shiori-tasuki shiori-tasuki --agent claude-code --scope user
+```
+
+Codex には `--agent codex` を指定する。
+
 ### CLI
 
 ```sh
