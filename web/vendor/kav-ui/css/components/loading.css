@@ -55,6 +55,13 @@
 .ui-progress::-webkit-progress-bar { background:var(--ui-progress-track); border-radius:inherit; }
 .ui-progress::-webkit-progress-value { background:var(--ui-progress-color); border-radius:inherit; }
 .ui-progress::-moz-progress-bar { background:var(--ui-progress-color); border-radius:inherit; }
+/* Above page headers; below menus (1080) and toasts (1100).
+   Size classes below override the thin fixed-edge default. */
+.ui-progress-top, .ui-progress-bottom {
+  position:fixed; inset:0 0 auto; z-index:1050;
+  width:100%; height:.25rem; margin:0; border-radius:0;
+}
+.ui-progress-bottom { inset:auto 0 0; }
 .ui-progress-sm { height:.25rem; }
 .ui-progress-lg { height:.875rem; }
 .ui-progress-success { --ui-progress-color:var(--bs-success); }

@@ -1015,8 +1015,8 @@
   });
 
   // Card opacity is a per-browser display preference from 0% to 100%. KavUI.setSurfaceOpacity()
-  // and its saved value stop at the theme default (52%), so the app saves its own value and sets
-  // the variable directly; app.css lifts the theme's lower limit (Kai17-a/Custom-UI#128).
+  // and its saved value stop at 35%, so the app saves its own value and sets the variable
+  // directly; app.css lifts the theme's lower limit.
   const SURFACE_OPACITY_KEY = 'shiori-tasuki-surface-opacity';
   const surfaceOpacity = $('#surface-opacity');
   const applySurfaceOpacity = (value) => {

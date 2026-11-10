@@ -6,7 +6,7 @@ body[data-ui-theme="glass"] {
   --bs-border-radius-lg:.9rem;
   --bs-box-shadow-sm:0 3px 14px color-mix(in srgb, var(--bs-body-color) 7%, transparent);
   --bs-box-shadow-lg:0 18px 48px color-mix(in srgb, var(--bs-body-color) 16%, transparent);
-  --_ui-surface-opacity:clamp(78%, var(--ui-theme-surface-opacity, 78%), 100%);
+  --_ui-surface-opacity:clamp(55%, var(--ui-theme-surface-opacity, 78%), 100%);
   --ui-theme-surface:color-mix(in srgb, var(--bs-body-bg) var(--_ui-surface-opacity), transparent);
   --ui-theme-overlay:color-mix(in srgb, var(--bs-body-bg) min(100%, calc(var(--_ui-surface-opacity) + 16%)), transparent);
   --ui-theme-input:color-mix(in srgb, var(--bs-body-bg) min(100%, calc(var(--_ui-surface-opacity) + 8%)), transparent);
@@ -33,7 +33,7 @@ body[data-ui-theme="glassmorphism"] {
   --bs-box-shadow-lg:0 20px 64px rgba(15,23,42,.24);
   --ui-glass-highlight:rgba(255,255,255,.48);
   --ui-glass-sheen:rgba(255,255,255,.16);
-  --_ui-surface-opacity:clamp(52%, var(--ui-theme-surface-opacity, 52%), 100%);
+  --_ui-surface-opacity:clamp(35%, var(--ui-theme-surface-opacity, 52%), 100%);
   --ui-theme-surface:color-mix(in srgb, var(--bs-body-bg) var(--_ui-surface-opacity), transparent);
   --ui-theme-overlay:color-mix(in srgb, var(--bs-body-bg) min(100%, calc(var(--_ui-surface-opacity) + 38%)), transparent);
   --ui-theme-input:color-mix(in srgb, var(--bs-body-bg) min(100%, calc(var(--_ui-surface-opacity) + 20%)), transparent);
@@ -96,6 +96,10 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme
   background:var(--ui-theme-surface);
   -webkit-backdrop-filter:var(--ui-theme-blur);
   backdrop-filter:var(--ui-theme-blur);
+}
+/* Explicit --faint backgrounds keep their original value; running cards keep their emphasis. */
+body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .task-card:not(.is-running) {
+  background:var(--faint, color-mix(in srgb, var(--bs-tertiary-bg) var(--_ui-surface-opacity), transparent));
 }
 body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) :is(.ui-card, .ui-surface, .ui-page-header-panel, .catalog-card) { box-shadow:var(--ui-theme-shadow); }
 body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"], [data-ui-theme="flat"], [data-ui-theme="soft"]) :is(.form-control, .form-select) { background-color:var(--ui-theme-input); }

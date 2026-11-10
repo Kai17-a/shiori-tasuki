@@ -1,0 +1,4 @@
+.ui-log-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); margin-block:var(--space-3); }
+.ui-log-viewport { height:20rem; overflow:auto; overflow-anchor:none; border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius); padding:var(--space-3); background:var(--bs-secondary-bg); }
+.ui-log-viewport ol { margin:0; padding-inline-start:3rem; }
+.ui-log-viewport li { font-family:var(--bs-font-monospace,monospace); white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6; }

@@ -1,0 +1,10 @@
+.ui-tree-list, .ui-tree-list ul, .ui-tree-list ol { list-style:none; margin:0; padding:0; }
+.ui-tree-list [role=group] { padding-inline-start:var(--space-6); }
+.ui-tree-list [data-ui-tree-item] { margin-block:var(--space-1); min-width:0; }
+.ui-tree-list [data-ui-tree-label] { display:inline-block; padding:var(--space-2); border-radius:var(--bs-border-radius); cursor:pointer; overflow-wrap:anywhere; max-width:100%; }
+.ui-tree-list [aria-selected=true] > [data-ui-tree-label] { background:var(--bs-secondary-bg); font-weight:600; text-decoration:underline; }
+.ui-tree-list [role=treeitem]:focus-visible { outline:none; }
+.ui-tree-list [role=treeitem]:focus-visible > [data-ui-tree-label] { outline:2px solid var(--bs-primary); outline-offset:2px; }
+.ui-tree-list [aria-disabled=true] > [data-ui-tree-label] { color:var(--bs-secondary-color); cursor:default; }
+.ui-tree-list [data-ui-tree-toggle] { margin-inline-end:var(--space-1); }
+@media (forced-colors:active) { .ui-tree-list [aria-selected=true] > [data-ui-tree-label] { outline:1px solid Highlight; } }

@@ -2,7 +2,8 @@
 .ui-select { display:inline-grid; grid-template-columns:minmax(0,1fr); position:relative; width:100%; min-width:min(100%,calc(var(--space-12) * 2)); vertical-align:middle; }
 .ui-select-native { position:absolute; grid-area:1 / 1; clip-path:inset(50%); pointer-events:none; }
 /* Reserve the longest option in toolbars without adding a sizing element. */
-.ui-toolbar-group .ui-select-native { position:static; }
+.ui-toolbar-group > .ui-select { flex:0 1 auto; min-width:0; max-width:var(--ui-toolbar-select-max-width,calc(var(--space-8) * 10)); }
+.ui-toolbar-group .ui-select-native { position:static; min-width:0; max-width:100%; }
 .ui-select-trigger { grid-area:1 / 1; width:100%; text-align:start; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:inherit; }
 .ui-select-trigger:disabled { cursor:not-allowed; opacity:.55; }
 .ui-select-trigger[aria-invalid="true"] { border-color:var(--bs-danger); }

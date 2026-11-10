@@ -2,6 +2,8 @@
    before CSS paints. Runtime customization still works with ui.css + ui.js alone. */
 (() => {
   'use strict';
+  // Shared API floor; CSS applies each theme's stricter floor. Keep ui.js in sync.
+  const SURFACE_OPACITY_MIN = 35;
   const root=document.documentElement;
   const base=document.createElement('style');
   base.textContent='html{background:var(--bs-body-bg,#f4f3f0);color-scheme:light}html[data-bs-theme="dark"]{background:var(--bs-body-bg,#1b1c1e);color-scheme:dark}';document.head.append(base);
@@ -35,7 +37,7 @@
     if(!document.body.hasAttribute('data-ui-theme-persist'))return true;
     const savedOpacity=read('kav-ui-surface-opacity');
     if(!document.body.style.getPropertyValue('--ui-theme-surface-opacity') && savedOpacity!==null && savedOpacity.trim()!=='' && Number.isFinite(Number(savedOpacity))) {
-      document.body.style.setProperty('--ui-theme-surface-opacity',Math.min(100,Math.max(52,Number(savedOpacity)))+'%');
+      document.body.style.setProperty('--ui-theme-surface-opacity',Math.min(100,Math.max(SURFACE_OPACITY_MIN,Number(savedOpacity)))+'%');
     }
     if(!document.body.hasAttribute('data-ui-theme') && designs.includes(design))document.body.dataset.uiTheme=design;
     const explicitSeed=root.getAttribute('data-ui-palette-seed');

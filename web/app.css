@@ -52,14 +52,6 @@ body.ui-app > .app-shell {
   }
 }
 
-/* Filter bars: Kav-UI sizes each select to its longest option and keeps a label and its control
-   on one line. The board's repository options can be long, so cap that width and let a group
-   shrink to a phone screen, cutting the shown option instead of scrolling the page sideways.
-   Remove once Kai17-a/Custom-UI#126 ships. */
-.ui-toolbar-group { max-width: 100%; min-width: 0; }
-.ui-toolbar-group > .ui-select { flex: 0 1 auto; min-width: 0; max-width: 20rem; }
-.ui-toolbar-group .ui-select-native { min-width: 0; max-width: 100%; }
-
 /* Table toolbars: the row count and the page buttons sit together at the top right, on the
    search box's line rather than centred against its label and box. */
 .ui-data-table-meta {
@@ -88,22 +80,14 @@ body.ui-app > .app-shell {
     opacity var(--motion-duration-base) var(--motion-ease-out);
 }
 
-/* Kav-UI keeps the surface opacity at or above the theme default (52%). Let the card opacity
-   setting go down to 0%; the theme still derives the input and dialog colors from it, and its
-   fallbacks for forced colors and missing backdrop-filter stay in force. Uses a private Kav-UI
-   variable, so check it on every Kav-UI update. Remove once Kai17-a/Custom-UI#128 ships.
+/* Kav-UI keeps the surface opacity at or above 35% on this theme. Let the card opacity setting
+   go down to 0%; the theme still derives the input and dialog colors from it, and its fallbacks
+   for forced colors and missing backdrop-filter stay in force. Uses a private Kav-UI variable,
+   so check it on every Kav-UI update.
    One lighter blur for every panel, so the background image reads the same on every page. */
 body[data-ui-theme="glassmorphism"][data-ui-theme] {
   --_ui-surface-opacity: clamp(0%, var(--ui-theme-surface-opacity, 52%), 100%);
   --ui-theme-blur: blur(8px) saturate(140%);
-}
-
-/* Kav-UI paints task cards opaque in every theme. On the glass themes, give them the same
-   opacity as every other panel, so one setting looks the same on the board and the overview.
-   Cards that an AI agent is working on keep Kav-UI's highlight.
-   Remove once Kai17-a/Custom-UI#127 ships. */
-body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .task-card:not(.is-running) {
-  background: color-mix(in srgb, var(--bs-tertiary-bg) var(--ui-theme-surface-opacity, 52%), transparent);
 }
 
 .ui-board .task-card:hover {
@@ -449,12 +433,11 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
   transition: flex-grow var(--motion-duration-base) var(--motion-ease-out);
 }
 
-/* The same marks as the board's column dots: grey to-do, blue in progress, solid green waiting
-   for review, and done as the lighter green of an empty ring. Kav-UI colors review differently
-   in the agent tree: Kai17-a/Custom-UI#129. */
+/* The same marks as the board's column dots: grey to-do, blue in progress, solid yellow waiting
+   for review, and done as the lighter green of an empty ring. */
 .family-meter-todo { background: var(--bs-secondary-color); }
 .family-meter-in_progress { background: var(--bs-primary); }
-.family-meter-review { background: var(--bs-success); }
+.family-meter-review { background: var(--bs-warning); }
 .family-meter-done { background: color-mix(in srgb, var(--bs-success) 45%, transparent); }
 
 .ui-agent-node.is-current {
@@ -641,14 +624,6 @@ body:is([data-ui-theme="glass"], [data-ui-theme="glassmorphism"]) .ui-board .tas
 
 .header-sync.sync-failed { color: var(--bs-danger); }
 .ui-page-actions [aria-current="page"] { color: var(--bs-primary); background: var(--bs-primary-bg-subtle); }
-/* Sync progress: an indeterminate Kav-UI progress bar pinned to the very top of the window,
-   above the header. Remove once Kai17-a/Custom-UI#135 ships. */
-.sync-progress {
-  position: fixed;
-  inset: 0 0 auto;
-  z-index: 1080;
-  border-radius: 0;
-}
 @media (width < 768px) {
   .app-content .ui-page-header { gap: var(--space-3); }
   .app-content .ui-page-heading { flex-basis: 100%; }

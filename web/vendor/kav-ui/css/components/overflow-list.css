@@ -1,0 +1,7 @@
+.ui-overflow-list { display:flex; align-items:start; gap:var(--space-2); min-width:0; max-width:100%; }
+.ui-overflow-items { display:flex; flex:1 1 auto; gap:var(--space-2); min-width:0; flex-wrap:nowrap; }
+.ui-overflow-items > * { flex:0 0 auto; white-space:nowrap; }
+.ui-overflow-more { flex:0 0 auto; }
+.ui-overflow-more summary { cursor:pointer; padding:var(--space-2); border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius); }
+.ui-overflow-panel { position:fixed; z-index:1080; display:grid; gap:var(--space-2); width:max-content; max-width:calc(100vw - 8px); max-height:calc(100dvh - 8px); overflow:auto; padding:var(--space-3); background:var(--bs-body-bg); color:var(--bs-body-color); border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius); }
+.ui-overflow-panel > * { min-width:0; max-width:100%; white-space:normal; overflow-wrap:anywhere; }

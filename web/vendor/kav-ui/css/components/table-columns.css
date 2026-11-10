@@ -1,0 +1,5 @@
+.ui-table-columns { margin-bottom:var(--space-3); }
+.ui-table-columns summary { cursor:pointer; width:fit-content; padding:var(--space-2) 0; }
+.ui-table-columns fieldset { display:flex; flex-wrap:wrap; gap:var(--space-3); padding:var(--space-3); margin-block:var(--space-2); border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius); }
+.ui-table-columns legend { font-size:var(--text-sm); }
+.ui-table-columns label { overflow-wrap:anywhere; }

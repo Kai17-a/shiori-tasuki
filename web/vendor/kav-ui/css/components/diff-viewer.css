@@ -1,0 +1,7 @@
+.ui-diff-output { overflow:auto; max-height:36rem; border:1px solid var(--bs-border-color); }
+.ui-diff-table { width:100%; table-layout:fixed; border-collapse:collapse; }
+.ui-diff-table td,.ui-diff-table th { vertical-align:top; padding:var(--space-2); border:1px solid var(--bs-border-color); }
+.ui-diff-table code { background:none; padding:0; border-radius:0; font-size:var(--text-sm); white-space:pre-wrap; overflow-wrap:anywhere; }
+.ui-diff-table span { display:block; font-size:var(--text-sm); }
+.ui-diff-table [data-diff-kind=delete] { background:var(--bs-danger-bg-subtle); }
+.ui-diff-table [data-diff-kind=insert] { background:var(--bs-success-bg-subtle); }

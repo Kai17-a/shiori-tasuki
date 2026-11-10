@@ -1,0 +1,7 @@
+.ui-richtext-toolbar { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:end; margin-bottom:var(--space-3); }
+.ui-richtext-toolbar label { min-width:0; flex:1 1 12rem; }
+.ui-richtext-editor { min-height:12rem; max-height:36rem; overflow:auto; padding:var(--space-3); border:1px solid var(--bs-border-color); border-radius:var(--bs-border-radius); background:var(--bs-body-bg); overflow-wrap:anywhere; }
+.ui-richtext-editor:focus-visible { outline:2px solid var(--bs-primary); outline-offset:2px; }
+.ui-richtext-editor[aria-readonly=true],.ui-richtext-editor[aria-disabled=true] { background:var(--bs-secondary-bg); }
+
+.ui-richtext-toolbar [aria-pressed=true] { background:var(--bs-secondary-bg); }

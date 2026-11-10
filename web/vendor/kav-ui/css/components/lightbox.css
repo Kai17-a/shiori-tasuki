@@ -1,0 +1,5 @@
+.ui-lightbox { width:min(64rem,92vw); padding:var(--space-4); }
+.ui-lightbox-toolbar { display:flex; flex-wrap:wrap; gap:var(--space-2); margin-bottom:var(--space-3); }
+.ui-lightbox-viewport { height:55dvh; overflow:auto; background:var(--bs-secondary-bg); border-radius:var(--bs-border-radius); }
+.ui-lightbox-viewport img { display:block; height:auto; max-width:none; margin-inline:auto; }
+.ui-lightbox [role=status] { font-variant-numeric:tabular-nums; }

@@ -1,0 +1,3 @@
+.ui-table-detail > td { padding:var(--space-4); background:var(--bs-secondary-bg); white-space:normal; overflow-wrap:anywhere; }
+.ui-table-detail > td > :first-child { margin-top:0; }
+.ui-table-detail > td > :last-child { margin-bottom:0; }
