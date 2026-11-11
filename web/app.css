@@ -220,13 +220,15 @@ body[data-ui-theme="glassmorphism"][data-ui-theme] {
   height: 1em;
 }
 
-/* Connector layer: sits behind the cards, drawn only while a family is traced. */
+/* Connector layer: drawn only while a family is traced. It sits in front of the columns, whose
+   panels would otherwise cover the lines. The lines run from card edge to card edge through the
+   gaps, so they do not cross a card's text, and the layer lets every pointer through. */
 .ui-board > .task-links {
   position: absolute;
   inset: 0;
   overflow: visible;
   pointer-events: none;
-  z-index: 0;
+  z-index: 2;
 }
 
 .ui-board > .column {
