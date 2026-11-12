@@ -14,7 +14,9 @@ impl Cli {
         c.current_dir(self.0.path());
         c.env_remove("CLAUDECODE")
             .env_remove("SHIORI_TASUKI_ACTOR")
-            .env_remove("SHIORI_TASUKI_REPO");
+            .env_remove("SHIORI_TASUKI_REPO")
+            .env_remove("GEMINI_CLI")
+            .env_remove("CURSOR_AGENT");
         for (key, _) in std::env::vars_os() {
             if key.to_string_lossy().starts_with("CODEX_")
                 || key.to_string_lossy().starts_with("CLAUDE_")
@@ -657,4 +659,47 @@ fn ignores_and_restores_repositories() {
     assert_eq!(removed["removed"], true);
     let bad = cli.run(&["gh", "ignore", "add", "not-a-repo"]);
     assert!(!bad.status.success(), "a malformed repository is refused");
+}
+
+#[test]
+fn other_agents_are_recognised_from_their_environment() {
+    let c = Cli::new();
+    for (key, actor) in [
+        ("CODEX_THREAD_ID", "codex"),
+        ("CODEX_SANDBOX", "codex"),
+        ("GEMINI_CLI", "gemini-cli"),
+        ("CURSOR_AGENT", "cursor"),
+    ] {
+        let o = c
+            .command()
+            .env(key, "1")
+            .args(["create", "Task", "--json"])
+            .output()
+            .unwrap();
+        let task: Value = serde_json::from_slice(&o.stdout).expect("create prints JSON");
+        assert_eq!(task["created_by"], actor, "{key}");
+        let id = task["id"].to_string();
+        let o = c
+            .command()
+            .env(key, "1")
+            .args(["done", &id, "--summary", "finished", "--json"])
+            .output()
+            .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&o.stdout).unwrap()["status"],
+            "review",
+            "{key}: an agent's report waits for the user"
+        );
+    }
+    // The person can still act from an agent's shell by saying so.
+    let o = c
+        .command()
+        .env("CODEX_THREAD_ID", "t")
+        .args(["--as", "user", "create", "Mine", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&o.stdout).unwrap()["created_by"],
+        "user"
+    );
 }

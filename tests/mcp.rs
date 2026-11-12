@@ -449,3 +449,25 @@ fn an_agent_records_the_users_review_only_with_their_words() {
     assert_eq!(event.actor, "claude-code");
     assert_eq!(event.message, "OK です");
 }
+
+#[test]
+fn list_tasks_returns_a_bounded_page() {
+    let (mut server, store) = server();
+    for n in 0..60 {
+        store
+            .create(&NewTask {
+                title: format!("Task {n}"),
+                ..NewTask::default()
+            })
+            .unwrap();
+    }
+
+    let default = payload(&call(&mut server, "list_tasks", json!({})));
+    assert_eq!(default.as_array().unwrap().len(), 50, "default page");
+    let small = payload(&call(&mut server, "list_tasks", json!({"limit": 3})));
+    assert_eq!(small.as_array().unwrap().len(), 3);
+    let all = payload(&call(&mut server, "list_tasks", json!({"limit": 200})));
+    assert_eq!(all.as_array().unwrap().len(), 60);
+    let zero = call(&mut server, "list_tasks", json!({"limit": 0}));
+    assert_eq!(zero["isError"], true, "a page holds at least one task");
+}

@@ -27,7 +27,7 @@ pub(crate) struct Cli {
     /// Database: --db > SHIORI_TASUKI_DB > $XDG_DATA_HOME/shiori-tasuki/tasks.db > $HOME/.local/share/shiori-tasuki/tasks.db. Parent folders are created.
     #[arg(long, global = true, env = "SHIORI_TASUKI_DB")]
     db: Option<PathBuf>,
-    /// Actor recorded in history; defaults to claude-code for CLAUDECODE=1, otherwise user. Codex: --as codex.
+    /// Actor recorded in history. Default: the AI agent whose shell this is (Claude Code, Codex, Gemini CLI, Cursor), otherwise user. Other agents: --as NAME.
     #[arg(long = "as", global = true, env = "SHIORI_TASUKI_ACTOR")]
     actor: Option<String>,
     /// GitHub repository (owner/name): list filter or default for gh push.
@@ -227,6 +227,27 @@ pub(crate) enum IgnoreCommand {
     List,
 }
 
+/// Environment variables that AI coding agents set in the shells they run, and the name
+/// each agent is recorded under. Without this an agent that forgets `--as` would act as
+/// the person and could finish tasks without review.
+const AGENT_ENVIRONMENTS: [(&str, &str); 7] = [
+    ("CLAUDECODE", "claude-code"),
+    ("CODEX_THREAD_ID", "codex"),
+    ("CODEX_SANDBOX", "codex"),
+    ("CODEX_SANDBOX_NETWORK_DISABLED", "codex"),
+    ("CODEX_CI", "codex"),
+    ("GEMINI_CLI", "gemini-cli"),
+    ("CURSOR_AGENT", "cursor"),
+];
+
+/// The agent whose shell this process runs in, when its environment tells.
+fn detected_agent() -> Option<&'static str> {
+    AGENT_ENVIRONMENTS
+        .iter()
+        .find(|(key, _)| std::env::var_os(key).is_some_and(|v| !v.is_empty()))
+        .map(|(_, name)| *name)
+}
+
 /// The default database under `data`, keeping a database made under the app's
 /// former name (`task-tool`) in use until one exists under the new name.
 fn default_database(data: &std::path::Path) -> PathBuf {
@@ -254,13 +275,10 @@ impl Cli {
     }
 
     fn actor(&self) -> Result<Actor> {
-        let actor = self.actor.clone().unwrap_or_else(|| {
-            if std::env::var("CLAUDECODE").as_deref() == Ok("1") {
-                "claude-code".into()
-            } else {
-                "user".into()
-            }
-        });
+        let actor = self
+            .actor
+            .clone()
+            .unwrap_or_else(|| detected_agent().unwrap_or("user").to_owned());
         let actor = actor.trim();
         if actor.is_empty() {
             bail!("actor must not be empty; use --as NAME or SHIORI_TASUKI_ACTOR");
@@ -420,7 +438,7 @@ impl Cli {
             Command::Hide { id } => serde_json::to_value(store.hide(*id, &actor)?)?,
             Command::Unhide { id } => serde_json::to_value(store.unhide(*id, &actor)?)?,
             Command::Gh(GhCommand::Push { id, repository }) => {
-                serde_json::to_value(self.push(store, *id, repository.as_deref())?)?
+                serde_json::to_value(self.push(store, *id, repository.as_deref(), &actor)?)?
             }
             Command::Gh(GhCommand::Ignore(command)) => ignore(store, command)?,
             Command::List { .. }
@@ -495,11 +513,17 @@ impl Cli {
 
 impl Cli {
     /// Publishes a local task as a GitHub issue in `repository` or the default repository.
-    fn push(&self, store: &Store, id: i64, repository: Option<&str>) -> Result<Task> {
+    fn push(
+        &self,
+        store: &Store,
+        id: i64,
+        repository: Option<&str>,
+        actor: &Actor,
+    ) -> Result<Task> {
         let repo = repository
             .or(self.repo.as_deref())
             .context("no repository given; pass owner/name or set --repo / SHIORI_TASUKI_REPO")?;
-        Ok(github::push_task(store, &GhCli, id, repo)?)
+        Ok(github::push_task(store, &GhCli, id, repo, actor)?)
     }
 }
 

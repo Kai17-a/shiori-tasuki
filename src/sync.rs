@@ -12,6 +12,10 @@ use crate::store::Store;
 /// How often the background sync runs; fixed so every process stays consistent.
 pub const SYNC_INTERVAL: Duration = Duration::from_secs(300);
 
+/// A scheduled run is skipped when any process started a sync more recently than this.
+/// Slightly under the interval, so a process's own previous run never delays its next.
+const MIN_SCHEDULED_GAP: Duration = Duration::from_secs(SYNC_INTERVAL.as_secs() - 10);
+
 /// Outcome of the most recent sync runs, shown on the dashboard.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct SyncStatus {
@@ -79,6 +83,20 @@ impl Syncer {
         }
     }
 
+    /// The timer's run: syncs once, blocking, unless this or another process sharing the
+    /// database started a sync within the last interval. Runs the person asks for
+    /// ([`Syncer::run_once`], [`Syncer::run_soon`]) are never skipped.
+    pub fn run_scheduled(&self) {
+        // When the claim itself fails, sync anyway; the sync reports the database error.
+        if self
+            .store
+            .claim_sync(unix_now(), MIN_SCHEDULED_GAP.as_secs())
+            .unwrap_or(true)
+        {
+            self.run_once();
+        }
+    }
+
     /// Starts a run on a blocking thread of the current Tokio runtime without waiting for
     /// it. The status reports `running` as soon as this returns.
     pub fn run_soon(&self) {
@@ -117,6 +135,9 @@ impl Syncer {
     }
 
     fn sync_and_record(&self) {
+        // Tell the other processes' timers that a sync is under way. Best effort: a failure
+        // only means they sync too.
+        let _ = self.store.claim_sync(unix_now(), 0);
         let result = github::sync_issues(&self.store, self.gh.as_ref());
         let now = unix_now();
         let mut status = self.lock();
@@ -134,7 +155,8 @@ impl Syncer {
         }
     }
 
-    /// Syncs now and then every [`SYNC_INTERVAL`] on the current Tokio runtime.
+    /// Syncs now and then every [`SYNC_INTERVAL`] on the current Tokio runtime, leaving out
+    /// the runs another process has just done (see [`Syncer::run_scheduled`]).
     pub fn spawn(self) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(SYNC_INTERVAL);
@@ -142,7 +164,8 @@ impl Syncer {
             loop {
                 ticker.tick().await;
                 let syncer = self.clone();
-                if let Err(err) = tokio::task::spawn_blocking(move || syncer.run_once()).await {
+                if let Err(err) = tokio::task::spawn_blocking(move || syncer.run_scheduled()).await
+                {
                     eprintln!("shiori-tasuki: GitHub sync task stopped unexpectedly: {err}");
                 }
             }

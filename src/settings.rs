@@ -4,7 +4,7 @@
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use crate::store::{Store, StoreError};
+use crate::store::{Store, StoreError, write_tx};
 
 /// Largest accepted background image; keeps the database and page loads reasonable.
 pub const MAX_IMAGE_BYTES: usize = 5 * 1024 * 1024;
@@ -256,6 +256,46 @@ impl Store {
     }
 }
 
+/// Settings row holding when a GitHub sync last started, in Unix seconds.
+const SYNC_STARTED_KEY: &str = "github_sync_started_at";
+
+impl Store {
+    /// Records that a GitHub sync starts at `now` (Unix seconds), unless one started less
+    /// than `min_gap_secs` ago. Returns whether the caller should sync.
+    ///
+    /// `serve` and every `mcp` process share one database and each keeps its own timer;
+    /// this lets them take turns instead of all asking GitHub for the same issues.
+    ///
+    /// # Errors
+    ///
+    /// Fails only on database errors.
+    pub fn claim_sync(&self, now: u64, min_gap_secs: u64) -> Result<bool, StoreError> {
+        let mut conn = self.conn();
+        let tx = write_tx(&mut conn)?;
+        let last: Option<String> = tx
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                [SYNC_STARTED_KEY],
+                |r| r.get(0),
+            )
+            .optional()?;
+        // A value that does not parse, or lies in the future, never blocks a sync.
+        let recent = last
+            .and_then(|v| v.parse::<u64>().ok())
+            .is_some_and(|last| last <= now && now - last < min_gap_secs);
+        if recent {
+            return Ok(false);
+        }
+        tx.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            params![SYNC_STARTED_KEY, now.to_string()],
+        )?;
+        tx.commit()?;
+        Ok(true)
+    }
+}
+
 /// Settings row holding the repositories whose issues are not imported, as a JSON array.
 const IGNORED_REPOS_KEY: &str = "github_ignored_repos";
 
@@ -322,7 +362,7 @@ impl Store {
             repos.push(repo.to_owned());
         }
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
+        let tx = write_tx(&mut conn)?;
         let deleted: u32 = tx.query_row(
             &format!("{REPO_TASKS} SELECT COUNT(*) FROM doomed"),
             [repo],

@@ -42,7 +42,7 @@ gh skill install Kai17-a/shiori-tasuki shiori-tasuki --agent claude-code --scope
 
 「shiori-tasuki の #12 をやって」と頼むと、AI は作業して「確認中」として報告する。承認と差し戻しはダッシュボードか会話で行う。
 
-MCP を使わない AI には `stk guide` で手順を渡す。Codex は `--as codex` を付ける。
+MCP を使わない AI には `stk guide` で手順を渡す。Claude Code・Codex・Gemini CLI・Cursor は自動で見分ける。それ以外の AI は `--as 名前` を付ける。
 
 ### CLI
 
@@ -58,7 +58,7 @@ stk approve 12
 
 ## GitHub 連携
 
-`serve` と `mcp` は、起動時と 5 分ごとに次の Issue を取り込む。
+`serve` と `mcp` は、起動時と 5 分ごとに次の Issue を取り込む。同じ DB を使うプロセスが複数あっても、取り込みは全体で 5 分に 1 回になる。
 
 - 自分のリポジトリで、自分が作った Issue
 - 自分が担当の Issue

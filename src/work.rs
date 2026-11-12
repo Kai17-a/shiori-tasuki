@@ -5,6 +5,7 @@ use std::str::FromStr;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
+use crate::store::write_tx;
 use crate::{Actor, Scope, Store, StoreError, Task, activity::Event, git_evidence::GitEvidence};
 
 /// A user-supplied artifact URL.
@@ -218,7 +219,7 @@ impl Store {
     pub fn add_link(&self, id: i64, link: &WorkLink) -> Result<(), StoreError> {
         link.validate()?;
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
+        let tx = write_tx(&mut conn)?;
         attach(&tx, id, link)?;
         tx.commit()?;
         Ok(())

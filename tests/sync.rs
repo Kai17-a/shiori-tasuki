@@ -95,3 +95,29 @@ fn a_success_clears_an_earlier_error() {
     syncer.run_once();
     assert!(syncer.status().last_error.is_none());
 }
+
+#[test]
+fn a_scheduled_run_is_skipped_when_another_process_just_synced() {
+    let store = Store::open_in_memory().expect("in-memory store opens");
+    let gh = || {
+        Arc::new(FakeGh {
+            replies: Mutex::new(vec![Ok(ONE_ISSUE.into())]),
+        })
+    };
+    // Two syncers on one database, as `serve` and each `mcp` process are.
+    let first = Syncer::new(store.clone(), gh());
+    let second = Syncer::new(store, gh());
+
+    first.run_scheduled();
+    second.run_scheduled();
+
+    assert!(first.status().last_success_at.is_some());
+    assert!(
+        second.status().last_finished_at.is_none(),
+        "the second process leaves the fresh result alone"
+    );
+
+    // Asking for a sync by hand always runs.
+    second.run_once();
+    assert!(second.status().last_success_at.is_some());
+}

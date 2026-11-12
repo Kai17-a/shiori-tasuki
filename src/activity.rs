@@ -9,7 +9,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use crate::Actor;
-use crate::store::{Store, StoreError, apply_update, complete_ancestors};
+use crate::store::{Store, StoreError, apply_update, complete_ancestors, write_tx};
 use crate::task::{Status, Task, TaskUpdate};
 use crate::work::SessionOutcome;
 
@@ -266,7 +266,7 @@ impl Store {
         let task = self.get(id)?.ok_or(StoreError::NotFound(id))?;
         let git = crate::git_evidence::capture(task.workdir.as_deref(), None);
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
+        let tx = write_tx(&mut conn)?;
         apply_update(
             &tx,
             id,
@@ -333,8 +333,16 @@ impl Store {
             .and_then(|g| g.head.as_deref());
         let git = crate::git_evidence::capture(task.workdir.as_deref(), start);
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        exists(&tx, id)?;
+        let tx = write_tx(&mut conn)?;
+        let status: String = tx
+            .query_row("SELECT status FROM tasks WHERE id = ?1", [id], |r| r.get(0))
+            .optional()?
+            .ok_or(StoreError::NotFound(id))?;
+        if status == Status::Done.as_str() && agent.is_agent() {
+            return Err(StoreError::Invalid(
+                "the task is already done; only the user reopens finished work".into(),
+            ));
+        }
         for link in links {
             crate::work::attach(&tx, id, link)?;
         }
@@ -421,7 +429,7 @@ impl Store {
     ) -> Result<Task, StoreError> {
         let approve = decision == ReviewDecision::Approve;
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
+        let tx = write_tx(&mut conn)?;
         let status: String = tx
             .query_row("SELECT status FROM tasks WHERE id=?1", [id], |r| r.get(0))
             .optional()?

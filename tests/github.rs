@@ -233,7 +233,7 @@ fn rejects_repo_names_that_could_be_read_as_flags() {
         .unwrap();
     let gh = FakeGh::default();
     for repo in ["--help", "owner", "a/b/c", "o/r;rm", ""] {
-        let err = github::push_task(&store, &gh, task.id, repo).unwrap_err();
+        let err = github::push_task(&store, &gh, task.id, repo, &Actor::User).unwrap_err();
         assert!(matches!(err, GithubError::Invalid(_)), "{repo:?}: {err:?}");
     }
     assert_eq!(
@@ -280,7 +280,7 @@ fn pushes_a_local_task_assigned_to_me_with_its_subtasks_as_a_checklist() {
         .unwrap();
     let gh = FakeGh::replying(["https://github.com/o/r/issues/42\n".to_owned()]);
 
-    let linked = github::push_task(&store, &gh, task.id, "o/r").unwrap();
+    let linked = github::push_task(&store, &gh, task.id, "o/r", &Actor::User).unwrap();
 
     let link = linked.github.unwrap();
     assert_eq!((link.repo.as_str(), link.number), ("o/r", 42));
@@ -309,7 +309,7 @@ fn refuses_to_push_a_task_that_is_already_linked() {
     let bug = store.find_by_github("o/r", 1).unwrap().unwrap();
     let gh = FakeGh::default();
 
-    let err = github::push_task(&store, &gh, bug.id, "o/r").unwrap_err();
+    let err = github::push_task(&store, &gh, bug.id, "o/r", &Actor::User).unwrap_err();
 
     assert!(matches!(err, GithubError::Invalid(_)), "got {err:?}");
     assert_eq!(*gh.calls.borrow(), Vec::<Vec<String>>::new());
@@ -676,4 +676,44 @@ fn ignoring_a_repository_deletes_its_tasks_and_skips_it_from_then_on() {
     assert!(store.find_by_github("o/noise", 3).unwrap().is_some());
 
     assert!(store.ignore_repo("not a repo").is_err());
+}
+
+#[test]
+fn a_graphql_error_says_what_github_reported() {
+    let store = Store::open_in_memory().unwrap();
+    let gh = FakeGh::replying([
+        r#"{"data":{"search":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}},
+            "errors":[{"type":"FORBIDDEN","message":"Resource protected by organization SAML enforcement"}]}"#
+            .to_owned(),
+    ]);
+
+    let err = github::sync_issues(&store, &gh).unwrap_err();
+
+    assert!(
+        err.to_string().contains("SAML enforcement"),
+        "the cause reaches the settings page: {err}"
+    );
+}
+
+#[test]
+fn publishing_a_task_is_recorded_in_its_history() {
+    let store = Store::open_in_memory().unwrap();
+    let task = store
+        .create(&NewTask {
+            title: "Ship".into(),
+            ..NewTask::default()
+        })
+        .unwrap();
+    let gh = FakeGh::replying(["https://github.com/o/r/issues/7\n".to_owned()]);
+    let agent = Actor::agent("codex").unwrap();
+
+    github::push_task(&store, &gh, task.id, "o/r", &agent).unwrap();
+
+    let history = store.events_for(task.id, 10).unwrap();
+    assert_eq!(history[0].actor, "codex", "who published it");
+    assert!(
+        history[0].message.contains("o/r#7"),
+        "which issue: {}",
+        history[0].message
+    );
 }

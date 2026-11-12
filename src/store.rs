@@ -133,15 +133,29 @@ CREATE INDEX task_runs_task ON task_runs(task_id, id);
 CREATE INDEX task_runs_outcome ON task_runs(outcome);
 ";
 
+/// Starts a transaction that takes the write lock at once.
+///
+/// A transaction that reads first and takes the lock on its first write fails with
+/// "database is locked" as soon as another process writes in between, without waiting for
+/// the busy timeout. Every transaction that writes starts here so that it waits instead.
+pub(crate) fn write_tx(conn: &mut Connection) -> rusqlite::Result<rusqlite::Transaction<'_>> {
+    conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+}
+
 /// Columns read by [`task_from_row`], with the subtask counts computed per row; shared by
 /// [`SELECT`] and [`VISIBLE_SELECT`].
+///
+/// A subtask the person hid on its own is put aside, so it is not counted. Under a hidden
+/// parent every subtask is hidden with it, and all of them count.
 macro_rules! task_columns {
     () => {
         "
 SELECT t.id, t.parent_id, t.title, t.description, t.status, t.created_by,
        t.gh_repo, t.gh_number, t.gh_url, t.created_at, t.updated_at, t.completed_at,
-       (SELECT COUNT(*) FROM tasks c WHERE c.parent_id = t.id) AS subtask_total,
-       (SELECT COUNT(*) FROM tasks c WHERE c.parent_id = t.id AND c.status = 'done') AS subtask_done,
+       (SELECT COUNT(*) FROM tasks c WHERE c.parent_id = t.id
+           AND (c.hidden_at IS NULL OR t.hidden_at IS NOT NULL)) AS subtask_total,
+       (SELECT COUNT(*) FROM tasks c WHERE c.parent_id = t.id AND c.status = 'done'
+           AND (c.hidden_at IS NULL OR t.hidden_at IS NOT NULL)) AS subtask_done,
        t.assignee,
        COALESCE((SELECT MAX(e.created_at) FROM task_events e WHERE e.task_id = t.id), t.updated_at)
            AS last_activity_at,
@@ -248,9 +262,14 @@ impl Store {
             StoreError::Invalid(format!("database schema version {version} is not valid"))
         })?;
         for (from, sql) in (0_i64..).zip(MIGRATIONS).skip(applied) {
-            let tx = conn.transaction()?;
-            tx.execute_batch(sql)?;
-            tx.pragma_update(None, "user_version", from + 1)?;
+            let tx = write_tx(&mut conn)?;
+            // Another process started at the same moment may have applied this step while
+            // we waited for the write lock; running it twice would fail.
+            let current: i64 = tx.pragma_query_value(None, "user_version", |r| r.get(0))?;
+            if current == from {
+                tx.execute_batch(sql)?;
+                tx.pragma_update(None, "user_version", from + 1)?;
+            }
             tx.commit()?;
         }
         Ok(Self {
@@ -283,7 +302,7 @@ impl Store {
         }
         let title = validate_title(&new.title)?;
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
+        let tx = write_tx(&mut conn)?;
         if let Some(parent) = new.parent_id {
             ensure_exists(&tx, parent)?;
         }
@@ -337,7 +356,7 @@ impl Store {
             .collect::<Result<_, _>>()?;
 
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
+        let tx = write_tx(&mut conn)?;
         ensure_exists(&tx, parent_id)?;
         let mut ids = Vec::with_capacity(subtasks.len());
         for (subtask, title) in subtasks.iter().zip(titles) {
@@ -423,7 +442,7 @@ impl Store {
             return Err(crate::activity::agent_done_error());
         }
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
+        let tx = write_tx(&mut conn)?;
         apply_update(&tx, id, update, actor)?;
         if update.status == Some(Status::Done) {
             complete_ancestors(&tx, id, actor)?;
@@ -454,7 +473,7 @@ impl Store {
 
     fn set_hidden(&self, id: i64, actor: &Actor, to: Visibility) -> Result<Task, StoreError> {
         let mut conn = self.conn();
-        let tx = conn.transaction()?;
+        let tx = write_tx(&mut conn)?;
         let task = fetch(&tx, id)?;
         if task.hidden_at.is_some() != (to == Visibility::Hidden) {
             let value = match to {
@@ -487,8 +506,24 @@ impl Store {
     /// [`StoreError::NotFound`] for an unknown id, [`StoreError::Invalid`] when another
     /// task is already linked to the same issue.
     pub fn link_github(&self, id: i64, link: &GithubLink) -> Result<Task, StoreError> {
-        let conn = self.conn();
-        let changed = conn
+        self.link_github_as(id, link, &Actor::User)
+    }
+
+    /// Like [`Store::link_github`], recording in the task's history that `actor`
+    /// published it as that issue.
+    ///
+    /// # Errors
+    ///
+    /// See [`Store::link_github`].
+    pub fn link_github_as(
+        &self,
+        id: i64,
+        link: &GithubLink,
+        actor: &Actor,
+    ) -> Result<Task, StoreError> {
+        let mut conn = self.conn();
+        let tx = write_tx(&mut conn)?;
+        let changed = tx
             .execute(
                 "UPDATE tasks SET gh_repo = ?2, gh_number = ?3, gh_url = ?4,
                     updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -499,6 +534,15 @@ impl Store {
         if changed == 0 {
             return Err(StoreError::NotFound(id));
         }
+        record(
+            &tx,
+            id,
+            actor,
+            EventKind::Updated,
+            &format!("GitHub Issue {}#{} として公開", link.repo, link.number),
+            None,
+        )?;
+        tx.commit()?;
         fetch(&conn, id)
     }
 
@@ -514,7 +558,7 @@ impl Store {
         issue: &IssueRecord<'_>,
     ) -> Result<Upsert, StoreError> {
         let mut conn = self.conn();
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = write_tx(&mut conn)?;
         let existing: Option<(i64, String, Option<String>)> = tx
             .query_row(
                 "SELECT id, status, gh_state FROM tasks WHERE gh_repo = ?1 AND gh_number = ?2",
@@ -548,7 +592,7 @@ impl Store {
         parent_id: Option<i64>,
     ) -> Result<bool, StoreError> {
         let mut conn = self.conn();
-        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let tx = write_tx(&mut conn)?;
         let task = fetch(&tx, id)?;
         if task.github.is_none() || task.parent_id == parent_id {
             return Ok(false);
@@ -881,7 +925,10 @@ pub(crate) fn complete_ancestors(
             })?;
         let Some(parent) = parent else { break };
         let open: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM tasks WHERE parent_id = ?1 AND status != 'done')",
+            // Subtasks hidden on their own are put aside and do not hold the parent back.
+            "SELECT EXISTS(SELECT 1 FROM tasks c JOIN tasks p ON p.id = c.parent_id
+                WHERE c.parent_id = ?1 AND c.status != 'done'
+                  AND (c.hidden_at IS NULL OR p.hidden_at IS NOT NULL))",
             [parent],
             |row| row.get(0),
         )?;

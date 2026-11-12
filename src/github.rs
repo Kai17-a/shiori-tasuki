@@ -2,10 +2,13 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::Actor;
 use crate::store::{IssueRecord, MAX_TITLE_CHARS, Scope, Store, StoreError, Upsert};
 use crate::task::{GithubLink, Status, Task};
 
@@ -80,15 +83,61 @@ pub trait GhRunner {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct GhCli;
 
+/// Longest one `gh` call may take. A call that hangs (a stalled connection, a prompt)
+/// would otherwise leave the sync running forever and keep the process from exiting.
+const GH_TIMEOUT: Duration = Duration::from_secs(120);
+
 impl GhRunner for GhCli {
     fn run(&self, args: &[String]) -> Result<String, GhError> {
-        let output = Command::new("gh").args(args).output()?;
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(GhError::Failed(stderr.trim().to_owned()))
+        run_with_timeout(Command::new("gh").args(args), GH_TIMEOUT)
+    }
+}
+
+/// Reads a child's pipe to its end on another thread.
+fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        if let Some(mut pipe) = pipe {
+            // Whatever arrived before a read error is still worth reporting.
+            let _ = pipe.read_to_end(&mut bytes);
         }
+        bytes
+    })
+}
+
+/// Runs `command` to the end and returns its stdout, killing it after `timeout`.
+fn run_with_timeout(command: &mut Command, timeout: Duration) -> Result<String, GhError> {
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    // Read both pipes while waiting, so a large reply never blocks the child.
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait()? {
+            Some(status) => break status,
+            None if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(GhError::Failed(format!(
+                    "timed out after {} seconds",
+                    timeout.as_secs()
+                )));
+            }
+        }
+    };
+    let stdout = stdout.join().unwrap_or_default();
+    let stderr = stderr.join().unwrap_or_default();
+    if status.success() {
+        Ok(String::from_utf8_lossy(&stdout).into_owned())
+    } else {
+        Err(GhError::Failed(
+            String::from_utf8_lossy(&stderr).trim().to_owned(),
+        ))
     }
 }
 
@@ -244,7 +293,20 @@ fn fetch_issues(gh: &(impl GhRunner + ?Sized), query: &str) -> Result<Vec<Issue>
         let response: Response = serde_json::from_str(&gh.run(&args)?)
             .map_err(|e| GithubError::Output(e.to_string()))?;
         if !response.errors.is_empty() {
-            return Err(GithubError::Output("GraphQL returned errors".into()));
+            let messages: Vec<&str> = response
+                .errors
+                .iter()
+                .filter_map(|e| e.get("message").and_then(|m| m.as_str()))
+                .take(3)
+                .collect();
+            let detail = if messages.is_empty() {
+                "(no message)".to_owned()
+            } else {
+                messages.join("; ")
+            };
+            return Err(GithubError::Output(format!(
+                "GraphQL returned errors: {detail}"
+            )));
         }
         for node in response.data.search.nodes {
             if node.is_null()
@@ -320,12 +382,12 @@ fn link_parents(
         }
     }
     // At most SEARCH_LIMIT issues, so the count always fits.
-    // At most SEARCH_LIMIT issues, so the count always fits.
     Ok(u32::try_from(linked_updates.len()).unwrap_or(u32::MAX))
 }
 
 /// Creates a GitHub issue assigned to the signed-in user from a local task and links
-/// the two, so later syncs keep it up to date.
+/// the two, so later syncs keep it up to date. The task's history records that `actor`
+/// published it.
 ///
 /// The issue body is the task description followed by its subtasks as a checklist.
 ///
@@ -338,6 +400,7 @@ pub fn push_task(
     gh: &(impl GhRunner + ?Sized),
     id: i64,
     repo: &str,
+    actor: &Actor,
 ) -> Result<Task, GithubError> {
     validate_repo(repo)?;
     let task = store.get(id)?.ok_or(StoreError::NotFound(id))?;
@@ -367,13 +430,14 @@ pub fn push_task(
         .next()
         .and_then(|n| n.parse().ok())
         .ok_or_else(|| GithubError::Output(format!("expected an issue URL, got {url:?}")))?;
-    Ok(store.link_github(
+    Ok(store.link_github_as(
         id,
         &GithubLink {
             repo: repo.to_owned(),
             number,
             url,
         },
+        actor,
     )?)
 }
 
@@ -422,5 +486,41 @@ pub fn validate_repo(repo: &str) -> Result<(), GithubError> {
         _ => Err(GithubError::Invalid(format!(
             "repository must look like owner/name, got {repo:?}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Command, Duration, GhError, run_with_timeout};
+
+    #[cfg(unix)]
+    #[test]
+    fn a_command_that_hangs_is_stopped() {
+        let err = run_with_timeout(Command::new("sleep").arg("30"), Duration::from_millis(100))
+            .unwrap_err();
+        assert!(
+            matches!(&err, GhError::Failed(m) if m.contains("timed out")),
+            "got {err:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_and_failures_are_reported() {
+        let out = run_with_timeout(
+            Command::new("sh").args(["-c", "echo hello"]),
+            Duration::from_secs(10),
+        )
+        .unwrap();
+        assert_eq!(out, "hello\n");
+        let err = run_with_timeout(
+            Command::new("sh").args(["-c", "echo broken >&2; exit 3"]),
+            Duration::from_secs(10),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&err, GhError::Failed(m) if m == "broken"),
+            "got {err:?}"
+        );
     }
 }

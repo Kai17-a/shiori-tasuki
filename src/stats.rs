@@ -1,6 +1,6 @@
 //! Aggregates shown on the admin dashboard. Hidden tasks are left out of every figure.
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 
 use crate::store::{Store, StoreError, VISIBLE_SELECT, task_from_row};
@@ -126,10 +126,7 @@ impl Store {
         let total = by_status.todo + by_status.in_progress + by_status.review + by_status.done;
 
         Ok(Stats {
-            awaiting_review: collect(&conn, &format!("{VISIBLE_SELECT} WHERE t.status = 'review' ORDER BY t.updated_at"), task_from_row)?.into_iter().map(|task| {
-                let report: (String,String,String) = conn.query_row("SELECT actor,created_at,message FROM task_events WHERE task_id=?1 AND kind='reported' ORDER BY id DESC LIMIT 1", [task.id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap_or((task.assignee.clone().unwrap_or_default(),task.updated_at.clone(),String::new()));
-                ReviewSummary { task,agent:report.0,reported_at:report.1,summary:report.2.lines().next().unwrap_or_default().to_owned() }
-            }).collect(),
+            awaiting_review: awaiting_review(&conn)?,
             total,
             by_status,
             completed_last_7_days: conn.query_row(
@@ -198,6 +195,42 @@ impl Store {
             )?,
         })
     }
+}
+
+/// Tasks waiting for the person's decision, oldest first, each with its latest report.
+fn awaiting_review(conn: &Connection) -> Result<Vec<ReviewSummary>, StoreError> {
+    let tasks = collect(
+        conn,
+        &format!("{VISIBLE_SELECT} WHERE t.status = 'review' ORDER BY t.updated_at"),
+        task_from_row,
+    )?;
+    tasks
+        .into_iter()
+        .map(|task| {
+            let report: Option<(String, String, String)> = conn
+                .query_row(
+                    "SELECT actor, created_at, message FROM task_events
+                     WHERE task_id = ?1 AND kind = 'reported' ORDER BY id DESC LIMIT 1",
+                    [task.id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .optional()?;
+            // A task moved to review by hand has no report; show who holds it instead.
+            let (agent, reported_at, message) = report.unwrap_or_else(|| {
+                (
+                    task.assignee.clone().unwrap_or_default(),
+                    task.updated_at.clone(),
+                    String::new(),
+                )
+            });
+            Ok(ReviewSummary {
+                task,
+                agent,
+                reported_at,
+                summary: message.lines().next().unwrap_or_default().to_owned(),
+            })
+        })
+        .collect()
 }
 
 /// SQL expression for the moment before which in-progress work counts as stalled.

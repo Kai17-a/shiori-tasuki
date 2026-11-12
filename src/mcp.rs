@@ -20,6 +20,13 @@ const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 use crate::INSTRUCTIONS;
 
+/// Tasks `list_tasks` returns unless the agent asks for another page size; every task
+/// carries its description, so an unbounded list would fill the agent's context.
+const LIST_DEFAULT_LIMIT: usize = 50;
+
+/// Largest page `list_tasks` returns.
+const LIST_MAX_LIMIT: usize = 200;
+
 /// History entries returned with `get_task`, newest first.
 const TASK_HISTORY_LIMIT: u32 = 20;
 
@@ -266,8 +273,13 @@ impl McpServer {
                     parent_id: Option<i64>,
                     status: Option<Status>,
                     assignee: Option<String>,
+                    limit: Option<usize>,
                 }
                 let a: A = args_of(args)?;
+                let limit = a.limit.unwrap_or(LIST_DEFAULT_LIMIT);
+                if !(1..=LIST_MAX_LIMIT).contains(&limit) {
+                    return Err(format!("limit must be 1-{LIST_MAX_LIMIT}, got {limit}"));
+                }
                 // "me" is the calling agent; an assignee filter searches subtasks too.
                 let assignee = a.assignee.map(|n| {
                     if n == "me" {
@@ -289,6 +301,7 @@ impl McpServer {
                     .filter(|t| t.hidden_at.is_none())
                     .filter(|t| a.status.is_none_or(|s| t.status == s))
                     .filter(|t| assignee.is_none() || t.assignee == assignee)
+                    .take(limit)
                     .collect();
                 to_json(&tasks)
             }
@@ -458,7 +471,7 @@ impl McpServer {
                 }
                 let a: A = args_of(args)?;
                 let repo = self.repo(a.repo)?;
-                let task = github::push_task(store, self.gh.as_ref(), a.id, &repo)
+                let task = github::push_task(store, self.gh.as_ref(), a.id, &repo, &self.actor)
                     .map_err(|e| e.to_string())?;
                 to_json(&task)
             }
@@ -510,10 +523,11 @@ fn tool_definitions() -> Value {
     json!([
         {
             "name": "list_tasks",
-            "description": "List top-level tasks, or the subtasks of parent_id. Filter by status, or by assignee (\"me\" for your own tasks, searching subtasks too). Each task includes subtask counts, assignee and last activity time.",
+            "description": "List top-level tasks, or the subtasks of parent_id. Filter by status, or by assignee (\"me\" for your own tasks, searching subtasks too). Each task includes subtask counts, assignee and last activity time. Returns the oldest matching tasks first, at most limit (default 50); narrow with status rather than reading everything.",
             "inputSchema": { "type": "object", "properties": {
                 "parent_id": { "type": "integer" }, "status": status,
-                "assignee": { "type": "string", "description": "Agent or person name, or \"me\"" }
+                "assignee": { "type": "string", "description": "Agent or person name, or \"me\"" },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "Most tasks to return; default 50" }
             }}
         },
         {

@@ -483,3 +483,111 @@ fn github_content_is_owned_by_source_even_for_published_local_tasks() {
     assert_eq!(updated.status, Status::InProgress);
     assert_eq!(updated.assignee.as_deref(), Some("codex"));
 }
+
+fn subtask(title: &str) -> NewSubtask {
+    NewSubtask {
+        title: title.to_owned(),
+        description: String::new(),
+    }
+}
+
+#[test]
+fn processes_writing_at_once_wait_for_each_other() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("tasks.db");
+    let parent = Store::open(&path)
+        .unwrap()
+        .create(&new_task("Parent"))
+        .unwrap();
+
+    // One connection per thread, as separate processes (serve, mcp, the CLI) have.
+    let writers: Vec<_> = (0..8)
+        .map(|n| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let store = Store::open(&path).expect("the database opens");
+                for i in 0..15 {
+                    store
+                        .create(&NewTask {
+                            title: format!("child {n}-{i}"),
+                            parent_id: Some(parent.id),
+                            ..NewTask::default()
+                        })
+                        .expect("a busy database is waited for, not reported");
+                }
+            })
+        })
+        .collect();
+    for writer in writers {
+        writer.join().expect("writer finishes");
+    }
+
+    let children = Store::open(&path)
+        .unwrap()
+        .list(Scope::ChildrenOf(parent.id))
+        .unwrap();
+    assert_eq!(children.len(), 120, "every write is stored");
+}
+
+#[test]
+fn a_hidden_subtask_does_not_hold_back_its_parent() {
+    let store = store();
+    let parent = store.create(&new_task("Parent")).unwrap();
+    let children = store
+        .create_subtasks(
+            parent.id,
+            &[subtask("Keep"), subtask("Put aside")],
+            &Actor::User,
+        )
+        .unwrap();
+    store.hide(children[1].id, &Actor::User).unwrap();
+
+    set_status(&store, children[0].id, Status::Done);
+
+    let parent = store.get(parent.id).unwrap().unwrap();
+    assert_eq!(
+        (parent.subtasks.done, parent.subtasks.total),
+        (1, 1),
+        "hidden subtasks are not counted"
+    );
+    assert_eq!(
+        parent.status,
+        Status::Done,
+        "the parent completes when its shown subtasks are done"
+    );
+}
+
+#[test]
+fn a_hidden_parent_still_counts_its_hidden_subtasks() {
+    let store = store();
+    let parent = store.create(&new_task("Parent")).unwrap();
+    store
+        .create_subtasks(parent.id, &[subtask("A"), subtask("B")], &Actor::User)
+        .unwrap();
+
+    let hidden = store.hide(parent.id, &Actor::User).unwrap();
+
+    assert_eq!(
+        hidden.subtasks.total, 2,
+        "a family hidden together keeps its progress"
+    );
+}
+
+#[test]
+fn an_agent_cannot_reopen_finished_work_by_reporting_it_again() {
+    let store = store();
+    let agent = Actor::agent("codex").unwrap();
+    let task = store.create(&new_task("Task")).unwrap();
+    set_status(&store, task.id, Status::Done);
+
+    let report = store.complete_task(task.id, &agent, "again").unwrap_err();
+    assert!(matches!(report, StoreError::Invalid(_)), "got {report:?}");
+    let fail = store.fail_task(task.id, &agent, "gave up").unwrap_err();
+    assert!(matches!(fail, StoreError::Invalid(_)), "got {fail:?}");
+
+    assert_eq!(
+        store.get(task.id).unwrap().unwrap().status,
+        Status::Done,
+        "the approved task stays done"
+    );
+}
