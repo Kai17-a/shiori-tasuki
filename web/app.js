@@ -1123,12 +1123,21 @@
     return { root: info.root, children, members, family: info.family };
   }
 
+  /**
+   * The family's subtasks that count toward its progress. One the person hid on its own is
+   * put aside and left out, as in the server's subtask counts; when the whole family is
+   * hidden, all of them count.
+   */
+  const countedDescendants = (family) => family.members
+    .filter((t) => t.id !== family.root.id && (isShown(t) || !isShown(family.root)));
+
   function renderFamilyNode(task, family, currentId) {
     const kids = family.children.get(task.id) ?? [];
     const current = task.id === currentId;
     const meta = [`#${task.id}`];
     if (task.subtasks.total > 0) meta.push(`子タスク ${task.subtasks.done}/${task.subtasks.total}`);
     if (task.github) meta.push(`${task.github.repo}#${task.github.number}`);
+    if (!isShown(task)) meta.push('非表示');
     return `<li>
       <div class="ui-agent-node${current ? ' is-current' : ''}" data-state="${nodeState(task)}"${current ? ' aria-current="true"' : ''}>
         <span class="ui-agent-state">${STATUS_LABELS[task.status]}</span>
@@ -1142,7 +1151,7 @@
   /** Short subtitle under the modal title: the task's status and where it sits in its family. */
   function renderFamilyLead(family, task) {
     const parent = task.parent_id != null ? tasks.find((t) => t.id === task.parent_id) : null;
-    const descendants = family.members.length - 1;
+    const descendants = countedDescendants(family).length;
     const place = parent
       ? `<a href="#task-${parent.id}">#${parent.id} ${escapeHtml(parent.title)}</a> の子タスク`
       : descendants > 0 ? `子タスク ${descendants} 件` : '';
@@ -1154,7 +1163,7 @@
   }
 
   function renderFamily(family, currentId) {
-    const descendants = family.members.filter((t) => t.id !== family.root.id);
+    const descendants = countedDescendants(family);
     const counts = Object.fromEntries(Object.keys(STATUS_LABELS).map((k) => [k, 0]));
     for (const t of descendants) counts[t.status] += 1;
     const total = descendants.length;
