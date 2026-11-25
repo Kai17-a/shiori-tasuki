@@ -498,6 +498,8 @@ body[data-ui-theme="glassmorphism"][data-ui-theme] {
 .family-dialog { max-height: 90dvh; overflow-y: auto; }
 /* Fit small families to the modal; wider trees scroll inside their canvas. */
 .family-dialog .ui-agent-tree { min-width: 100%; width: max-content; }
+/* Each branch must fit its card and the full row of child branches. */
+.family-dialog .ui-agent-tree li { min-width: max-content; }
 
 .ui-dialog { max-width: 92vw; }
 .task-details form { min-width: 0; }
